@@ -126,7 +126,7 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         )
         self.assertEqual(
             profile["scorecard"]["genius_candidate_promotion_target"]["purpose"],
-            "long-term promotion target after repeated reviewed trials; not the base profile validation gate",
+            "long-term promotion target after repeated scored reviewed trials; not the base profile validation gate",
         )
         self.assertFalse(profile["public_safe"]["network_call_performed"])
         self.assertEqual(profile["public_safe"]["private_reasoning_trace"], "not_stored")
@@ -167,6 +167,14 @@ class GeniusDerivationEngineTests(unittest.TestCase):
                 BLUEPRINT,
                 curriculum_manifest=CURRICULUM,
                 assessment_transcript={"results": "not-a-list"},
+            )
+
+    def test_grade_records_require_record_objects(self) -> None:
+        with self.assertRaisesRegex(ValueError, "grade_record_object"):
+            build_genius_derivation_profile(
+                BLUEPRINT,
+                curriculum_manifest=CURRICULUM,
+                grade_learning_records={"records": ["bad-record"]},
             )
 
     def test_low_score_assessment_does_not_count_as_reviewed_evidence(self) -> None:
@@ -231,7 +239,45 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertEqual(profile["status"], "genius_candidate_promoted")
         self.assertTrue(promotion["promoted"])
         self.assertEqual(promotion["observed"]["reviewed_trials"], 8)
+        self.assertEqual(promotion["observed"]["scored_reviewed_trials"], 8)
         self.assertEqual(promotion["observed"]["assessment_average_score"], 95.0)
+
+    def test_genius_candidate_promotion_requires_eight_scored_reviewed_trials(self) -> None:
+        transcript = {
+            "results": [
+                {
+                    "gate_id": "one_high_score_gate",
+                    "passed": True,
+                    "score": 95,
+                    "rubric_scores": {"evidence_precision": 24, "counterexample_depth": 24},
+                    "weak_spots": ["overconfidence"],
+                }
+            ]
+        }
+        records = {
+            "records": [
+                {
+                    "year_id": f"reviewed_assignment_{index}",
+                    "education_stage": f"transfer_stage_{index}",
+                    "learning_data": ["transfer work"],
+                    "assignments": [{"status": "completed_and_reviewed"}],
+                }
+                for index in range(7)
+            ]
+        }
+
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            assessment_transcript=transcript,
+            growth_profile=GROWTH,
+            grade_learning_records=records,
+        )
+
+        self.assertEqual(profile["status"], "training_contract_valid")
+        self.assertEqual(profile["promotion"]["observed"]["reviewed_trials"], 8)
+        self.assertEqual(profile["promotion"]["observed"]["scored_reviewed_trials"], 1)
+        self.assertIn("minimum_scored_reviewed_trials_met", profile["promotion"]["failed_checks"])
 
     def test_public_profile_redacts_obvious_provider_secrets_and_keeps_reasoning_private(self) -> None:
         secret = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"

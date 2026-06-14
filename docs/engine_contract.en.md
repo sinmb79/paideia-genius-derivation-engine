@@ -99,7 +99,7 @@ Key sections:
 `promotion.status` becomes `genius_candidate_promoted` only when all of these are true:
 
 - base `validation.passed`
-- `reviewed_transfer_evidence_count >= 8`
+- `scored_reviewed_trial_count >= 8`
 - `assessment_average_score >= 90`
 - at least two varied transfer evidence signals
 - weakness guardrails are documented

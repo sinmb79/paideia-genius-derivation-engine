@@ -69,7 +69,7 @@ paideia-genius-profile build-profile `
 
 Without `--allow-draft`, insufficient evidence produces an artifact but returns exit code `2`.
 
-`validation.passed` means the training contract has enough minimum evidence to be valid; it does not prove genius. Longer-term criteria such as eight reviewed trials and an average score of 90 are checked by a separate `promotion` gate.
+`validation.passed` means the training contract has enough minimum evidence to be valid; it does not prove genius. Longer-term criteria such as eight scored reviewed trials and an average score of 90 are checked by a separate `promotion` gate.
 
 ## Status Model
 
@@ -77,7 +77,7 @@ Without `--allow-draft`, insufficient evidence produces an artifact but returns 
 | --- | --- |
 | `draft` | The blueprint is valid, but minimum training evidence is missing. |
 | `training_contract_valid` | The profile is a minimum-evidence training contract, not proof of genius. |
-| `genius_candidate_promoted` | The stricter long-term promotion gate passed: at least 8 reviewed trials, average score 90+, varied transfer, and documented weaknesses. |
+| `genius_candidate_promoted` | The stricter long-term promotion gate passed: at least 8 scored reviewed trials, average score 90+, varied transfer, and documented weaknesses. |
 
 `validation.contract_status` describes the minimum contract gate, such as `minimum_evidence_contract_passed`. `promotion.status` describes long-term genius candidate promotion.
 

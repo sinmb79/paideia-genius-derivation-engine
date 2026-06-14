@@ -376,13 +376,18 @@ def validate_genius_derivation_inputs(
         else:
             if isinstance(grade_learning_records, dict) and "records" in grade_learning_records and not isinstance(grade_learning_records.get("records"), list):
                 add_issue("grade_learning_records_records_list", "grade_learning_records.records must be a list", path="grade_learning_records.records")
-            for record_index, record in enumerate(_grade_records(grade_learning_records)):
+            raw_records = grade_learning_records.get("records", []) if isinstance(grade_learning_records, dict) else grade_learning_records
+            for record_index, record in enumerate(_as_list(raw_records)):
+                record_path = f"grade_learning_records.records[{record_index}]" if isinstance(grade_learning_records, dict) else f"grade_learning_records[{record_index}]"
+                if not isinstance(record, dict):
+                    add_issue("grade_record_object", "each grade learning record must be an object", path=record_path)
+                    continue
                 assignments = record.get("assignments")
                 if assignments is not None and not isinstance(assignments, list):
-                    add_issue("grade_assignments_list", "record.assignments must be a list when present", path=f"grade_learning_records[{record_index}].assignments")
+                    add_issue("grade_assignments_list", "record.assignments must be a list when present", path=f"{record_path}.assignments")
                     continue
                 for assignment_index, assignment in enumerate(_as_list(assignments)):
-                    path = f"grade_learning_records[{record_index}].assignments[{assignment_index}].status"
+                    path = f"{record_path}.assignments[{assignment_index}].status"
                     if not isinstance(assignment, dict):
                         add_issue("grade_assignment_object", "each assignment must be an object", path=path)
                     elif not _non_empty_text(assignment.get("status")):
@@ -465,6 +470,7 @@ def _evidence_counts(
         "passed_assessment_count": passed,
         "qualified_passed_assessment_count": len(qualified_assessments),
         "disqualified_passed_assessment_count": max(0, passed - len(qualified_assessments)),
+        "scored_reviewed_trial_count": len(qualified_scores),
         "assessment_average_score": round(sum(qualified_scores) / len(qualified_scores), 2) if qualified_scores else 0,
         "grade_learning_record_count": len(records),
         "reviewed_assignment_count": reviewed_assignments,
@@ -626,8 +632,8 @@ def build_genius_derivation_profile(
                 "requires_domain_scope_or_curriculum_evidence": True,
             },
             "genius_candidate_promotion_target": {
-                "purpose": "long-term promotion target after repeated reviewed trials; not the base profile validation gate",
-                "minimum_reviewed_trials": 8,
+                "purpose": "long-term promotion target after repeated scored reviewed trials; not the base profile validation gate",
+                "minimum_scored_reviewed_trials": 8,
                 "minimum_average_score": 90,
                 "requires_varied_transfer": True,
                 "requires_documented_weaknesses": True,
@@ -731,7 +737,7 @@ def validate_genius_derivation_profile(profile: dict[str, Any]) -> dict[str, Any
         ),
         "genius_promotion_target_not_base_validation_gate": (
             genius_candidate_target.get("purpose")
-            == "long-term promotion target after repeated reviewed trials; not the base profile validation gate"
+            == "long-term promotion target after repeated scored reviewed trials; not the base profile validation gate"
         ),
         "asymmetry_explicit": unevenness.get("specialization_is_allowed_to_create_asymmetry") is True,
         "weakness_guardrails_present": bool(_as_list(unevenness.get("weakness_guardrails"))),
@@ -763,18 +769,19 @@ def evaluate_genius_candidate_promotion(profile: dict[str, Any]) -> dict[str, An
     evidence = _as_dict(profile.get("evidence_summary"))
     unevenness = _as_dict(profile.get("unevenness_profile"))
 
-    minimum_trials = int(target.get("minimum_reviewed_trials") or 8)
+    minimum_trials = int(target.get("minimum_scored_reviewed_trials") or target.get("minimum_reviewed_trials") or 8)
     minimum_average = float(target.get("minimum_average_score") or 90)
     requires_varied_transfer = target.get("requires_varied_transfer") is True
     requires_documented_weaknesses = target.get("requires_documented_weaknesses") is True
     reviewed_trials = int(evidence.get("reviewed_transfer_evidence_count") or 0)
+    scored_reviewed_trials = int(evidence.get("scored_reviewed_trial_count") or 0)
     average_score = float(evidence.get("assessment_average_score") or 0)
     varied_transfer_count = int(evidence.get("varied_transfer_evidence_count") or 0)
     weakness_guardrails = _as_list(unevenness.get("weakness_guardrails"))
 
     checks = {
         "training_contract_valid": validation.get("passed") is True,
-        "minimum_reviewed_trials_met": reviewed_trials >= minimum_trials,
+        "minimum_scored_reviewed_trials_met": scored_reviewed_trials >= minimum_trials,
         "minimum_average_score_met": average_score >= minimum_average,
         "varied_transfer_met": (not requires_varied_transfer) or varied_transfer_count >= 2,
         "documented_weaknesses_present": (not requires_documented_weaknesses) or bool(weakness_guardrails),
@@ -789,12 +796,13 @@ def evaluate_genius_candidate_promotion(profile: dict[str, Any]) -> dict[str, An
         "failed_checks": failed,
         "observed": {
             "reviewed_trials": reviewed_trials,
+            "scored_reviewed_trials": scored_reviewed_trials,
             "assessment_average_score": average_score,
             "varied_transfer_evidence_count": varied_transfer_count,
             "weakness_guardrail_count": len(weakness_guardrails),
         },
         "required": {
-            "minimum_reviewed_trials": minimum_trials,
+            "minimum_scored_reviewed_trials": minimum_trials,
             "minimum_average_score": minimum_average,
             "requires_varied_transfer": requires_varied_transfer,
             "requires_documented_weaknesses": requires_documented_weaknesses,

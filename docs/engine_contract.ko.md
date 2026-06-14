@@ -99,7 +99,7 @@
 `promotion.status`가 `genius_candidate_promoted`가 되려면 다음 조건이 모두 필요합니다.
 
 - base `validation.passed`
-- `reviewed_transfer_evidence_count >= 8`
+- `scored_reviewed_trial_count >= 8`
 - `assessment_average_score >= 90`
 - varied transfer evidence 2종 이상
 - weakness guardrail 존재

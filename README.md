@@ -69,7 +69,7 @@ paideia-genius-profile build-profile `
 
 `--allow-draft`가 없고 훈련 증거가 부족하면 파일은 생성되지만 종료 코드는 `2`입니다. 이는 “실패”라기보다, 증거가 부족한 프로필을 자동으로 합격 처리하지 않기 위한 안전장치입니다.
 
-`validation.passed`는 “천재 입증”이 아니라 최소 증거를 갖춘 훈련 계약 검증입니다. 반복 시험 8회, 평균 90점 같은 장기 기준은 별도 `promotion` gate가 검사합니다.
+`validation.passed`는 “천재 입증”이 아니라 최소 증거를 갖춘 훈련 계약 검증입니다. 점수가 있는 reviewed trial 8회, 평균 90점 같은 장기 기준은 별도 `promotion` gate가 검사합니다.
 
 ## 상태 체계
 
@@ -77,7 +77,7 @@ paideia-genius-profile build-profile `
 | --- | --- |
 | `draft` | blueprint는 유효하지만 최소 훈련 증거가 부족합니다. |
 | `training_contract_valid` | 최소 증거를 갖춘 훈련 계약입니다. 천재 후보 입증은 아닙니다. |
-| `genius_candidate_promoted` | 장기 promotion gate를 통과했습니다. 8회 이상 reviewed trial, 평균 90점 이상, varied transfer, documented weakness가 필요합니다. |
+| `genius_candidate_promoted` | 장기 promotion gate를 통과했습니다. 8회 이상 scored reviewed trial, 평균 90점 이상, varied transfer, documented weakness가 필요합니다. |
 
 `validation.contract_status`는 `minimum_evidence_contract_passed`처럼 최소 계약 검증 결과를 말하고, `promotion.status`는 장기 천재 후보 승격 여부를 말합니다.
 
