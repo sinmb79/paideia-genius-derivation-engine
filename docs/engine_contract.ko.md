@@ -28,7 +28,11 @@
 }
 ```
 
-`schema`가 다르면 엔진 함수는 `ValueError`를 발생시키고, CLI는 실패 artifact를 쓴 뒤 종료 코드 `2`를 반환합니다.
+`schema`가 다르면 엔진 함수는 `ValueError`를 발생시키고, CLI는 실패 artifact를 쓴 뒤 종료 코드 `2`를 반환합니다. 코드 레벨 입력 계약은 다음 필드를 필수로 봅니다.
+
+- `identity.name`: 비어 있지 않은 문자열
+- `track.track_id`: 비어 있지 않은 문자열
+- `track.domains`: 하나 이상의 문자열을 가진 배열
 
 ### Curriculum Manifest
 
@@ -36,7 +40,13 @@
 
 ### Assessment Transcript
 
-시험 결과와 약점, rubric score를 제공합니다. `passed: true`인 시험은 검증 증거로 계산됩니다.
+시험 결과와 약점, rubric score를 제공합니다. 각 `results[]` 항목의 `passed`는 boolean이어야 합니다.
+
+`passed: true`인 시험도 quality floor를 통과해야 reviewed evidence로 계산됩니다.
+
+- `score`가 있으면 80점 이상이어야 합니다.
+- `rubric_scores`가 있으면 numeric score가 모두 20점 이상이어야 합니다.
+- quality floor를 통과하지 못한 시험은 약점 기록에는 반영되지만, `reviewed_transfer_evidence_count`에는 반영되지 않습니다.
 
 ### Growth Profile
 
@@ -44,7 +54,7 @@
 
 ### Grade Learning Records
 
-연도/단계별 학습 기록, 과제, 피드백 loop를 제공합니다. `completed_and_reviewed` 과제는 검증 증거로 계산됩니다.
+연도/단계별 학습 기록, 과제, 피드백 loop를 제공합니다. `assignments[]` 항목이 있으면 `status`가 필요합니다. `completed_and_reviewed` 과제만 reviewed transfer evidence로 계산됩니다.
 
 ### Reasoning Kibo JSONL
 
@@ -66,14 +76,33 @@
 - `evidence_summary`: 검증 증거 수
 - `public_safe`: 공개 안전 플래그
 - `validation`: profile 검증 결과
+- `promotion`: 장기 천재 후보 승격 gate 결과
 
 `scorecard.profile_validation_threshold`는 이 profile이 훈련 계약으로 유효한지 판단하는 최소 기준입니다. `scorecard.genius_candidate_promotion_target`는 이후 반복 시험과 전이 과제로 달성해야 하는 장기 목표이며, base `validation.passed`의 직접 조건이 아닙니다.
+
+## Profile 상태
+
+| 상태 | 의미 |
+| --- | --- |
+| `draft` | blueprint는 유효하지만 최소 훈련 증거가 부족합니다. |
+| `training_contract_valid` | 최소 증거 계약은 통과했지만 장기 천재 후보 승격은 아직 아닙니다. |
+| `genius_candidate_promoted` | `promotion` gate를 통과했습니다. |
 
 ## 검증 상태
 
 - `passed`: 최소 훈련 증거와 구조 검증을 통과한 훈련 계약입니다. 천재성이 입증됐다는 뜻은 아닙니다.
 - `needs_training_evidence`: 구조는 만들었지만 증거가 부족합니다.
 - `failed`: schema 또는 핵심 구조가 맞지 않습니다.
+
+## Promotion 상태
+
+`promotion.status`가 `genius_candidate_promoted`가 되려면 다음 조건이 모두 필요합니다.
+
+- base `validation.passed`
+- `reviewed_transfer_evidence_count >= 8`
+- `assessment_average_score >= 90`
+- varied transfer evidence 2종 이상
+- weakness guardrail 존재
 
 ## 보안 경계
 

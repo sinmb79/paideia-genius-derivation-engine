@@ -6,7 +6,7 @@
       "passed": true,
       "rubric_scores": {
         "evidence_precision": 24,
-        "counterexample_depth": 18
+        "counterexample_depth": 22
       },
       "weak_spots": [
         "counterexample_depth"

@@ -11,6 +11,17 @@ from typing import Any
 
 GENIUS_DERIVATION_PROFILE_SCHEMA = "paideia-genius-derivation-profile/v1"
 GENIUS_DERIVATION_VALIDATION_SCHEMA = "paideia-genius-derivation-profile-validation/v1"
+GENIUS_DERIVATION_INPUT_VALIDATION_SCHEMA = "paideia-genius-derivation-input-validation/v1"
+GENIUS_CANDIDATE_PROMOTION_SCHEMA = "paideia-genius-candidate-promotion/v1"
+TRAINING_BLUEPRINT_SCHEMA = "ai-talent-training-blueprint/v1"
+
+DRAFT_STATUS = "draft"
+TRAINING_CONTRACT_VALID_STATUS = "training_contract_valid"
+GENIUS_CANDIDATE_PROMOTED_STATUS = "genius_candidate_promoted"
+FAILED_STATUS = "failed"
+
+MINIMUM_ASSESSMENT_SCORE = 80
+MINIMUM_RUBRIC_SCORE = 20
 
 REQUIRED_PRACTICE_CYCLE = [
     "domain_problem_selection",
@@ -60,6 +71,22 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _non_empty_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _numeric(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _has_non_empty_string_list(value: Any) -> bool:
+    return isinstance(value, list) and any(_non_empty_text(item) for item in value)
+
+
 def _redact_public_text(value: str) -> str:
     redacted = value
     for pattern in _SENSITIVE_VALUE_PATTERNS:
@@ -89,6 +116,42 @@ def _assessment_results(assessment_transcript: dict[str, Any] | None) -> list[di
     if not isinstance(assessment_transcript, dict):
         return []
     return [item for item in assessment_transcript.get("results", []) if isinstance(item, dict)]
+
+
+def _assessment_score_value(result: dict[str, Any]) -> float | None:
+    direct_score = _numeric(result.get("score"))
+    if direct_score is not None:
+        return direct_score
+    rubric_scores = [
+        score
+        for score in (_numeric(value) for value in _as_dict(result.get("rubric_scores")).values())
+        if score is not None
+    ]
+    if not rubric_scores:
+        return None
+    return sum(rubric_scores) / len(rubric_scores)
+
+
+def _assessment_meets_quality_floor(result: dict[str, Any]) -> bool:
+    if result.get("passed") is not True:
+        return False
+    direct_score = _numeric(result.get("score"))
+    if direct_score is not None and direct_score < MINIMUM_ASSESSMENT_SCORE:
+        return False
+    rubric_scores = [
+        score
+        for score in (_numeric(value) for value in _as_dict(result.get("rubric_scores")).values())
+        if score is not None
+    ]
+    return not rubric_scores or min(rubric_scores) >= MINIMUM_RUBRIC_SCORE
+
+
+def _reasoning_entry_count(reasoning_kibo: dict[str, Any] | None) -> int:
+    kibo = _as_dict(reasoning_kibo)
+    entry_count = kibo.get("entry_count")
+    if isinstance(entry_count, int) and entry_count >= 0:
+        return entry_count
+    return len(_as_list(kibo.get("entries")))
 
 
 def _track_from_blueprint(blueprint: dict[str, Any]) -> dict[str, Any]:
@@ -229,6 +292,132 @@ def _pattern_chunks(curriculum_topics: list[str], domain_focus: dict[str, Any]) 
     return chunks
 
 
+def validate_genius_derivation_inputs(
+    blueprint: dict[str, Any],
+    *,
+    curriculum_manifest: dict[str, Any] | None = None,
+    assessment_transcript: dict[str, Any] | None = None,
+    growth_profile: dict[str, Any] | None = None,
+    grade_learning_records: dict[str, Any] | list[dict[str, Any]] | None = None,
+    reasoning_kibo: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate the public input contract before profile construction."""
+
+    failed: list[str] = []
+    issues: list[dict[str, Any]] = []
+
+    def add_issue(check_id: str, message: str, *, path: str) -> None:
+        failed.append(check_id)
+        issues.append({"check_id": check_id, "path": path, "message": message})
+
+    if not isinstance(blueprint, dict):
+        add_issue("blueprint_object_required", "blueprint must be a JSON object", path="blueprint")
+        blueprint = {}
+
+    identity = _as_dict(blueprint.get("identity"))
+    track = _as_dict(blueprint.get("track"))
+    checks = {
+        "blueprint_schema": blueprint.get("schema") == TRAINING_BLUEPRINT_SCHEMA,
+        "identity_object": isinstance(blueprint.get("identity"), dict),
+        "identity_name": _non_empty_text(identity.get("name")),
+        "track_object": isinstance(blueprint.get("track"), dict),
+        "track_id": _non_empty_text(track.get("track_id")),
+        "track_domains": _has_non_empty_string_list(track.get("domains")),
+    }
+    if not checks["blueprint_schema"]:
+        add_issue("blueprint_schema", f"blueprint.schema must be {TRAINING_BLUEPRINT_SCHEMA}", path="blueprint.schema")
+    if not checks["identity_object"]:
+        add_issue("identity_object", "blueprint.identity must be an object", path="blueprint.identity")
+    if not checks["identity_name"]:
+        add_issue("identity_name", "blueprint.identity.name is required", path="blueprint.identity.name")
+    if not checks["track_object"]:
+        add_issue("track_object", "blueprint.track must be an object", path="blueprint.track")
+    if not checks["track_id"]:
+        add_issue("track_id", "blueprint.track.track_id is required", path="blueprint.track.track_id")
+    if not checks["track_domains"]:
+        add_issue("track_domains", "blueprint.track.domains must contain at least one domain", path="blueprint.track.domains")
+
+    if curriculum_manifest is not None and not isinstance(curriculum_manifest, dict):
+        add_issue("curriculum_manifest_object", "curriculum manifest must be an object", path="curriculum_manifest")
+
+    if assessment_transcript is not None:
+        if not isinstance(assessment_transcript, dict):
+            add_issue("assessment_transcript_object", "assessment transcript must be an object", path="assessment_transcript")
+        else:
+            results = assessment_transcript.get("results")
+            if not isinstance(results, list):
+                add_issue("assessment_results_list", "assessment_transcript.results must be a list", path="assessment_transcript.results")
+            else:
+                for index, result in enumerate(results):
+                    path = f"assessment_transcript.results[{index}]"
+                    if not isinstance(result, dict):
+                        add_issue("assessment_result_object", "each assessment result must be an object", path=path)
+                        continue
+                    if "passed" not in result or not isinstance(result.get("passed"), bool):
+                        add_issue("assessment_result_passed_bool", "assessment result passed must be a boolean", path=f"{path}.passed")
+                    if "rubric_scores" in result and not isinstance(result.get("rubric_scores"), dict):
+                        add_issue("assessment_rubric_scores_object", "rubric_scores must be an object when present", path=f"{path}.rubric_scores")
+                    if "score" in result and _numeric(result.get("score")) is None:
+                        add_issue("assessment_score_number", "score must be numeric when present", path=f"{path}.score")
+
+    if growth_profile is not None:
+        if not isinstance(growth_profile, dict):
+            add_issue("growth_profile_object", "growth profile must be an object", path="growth_profile")
+        elif "asymmetry_profile" in growth_profile and not isinstance(growth_profile.get("asymmetry_profile"), dict):
+            add_issue(
+                "growth_asymmetry_profile_object",
+                "growth_profile.asymmetry_profile must be an object when present",
+                path="growth_profile.asymmetry_profile",
+            )
+
+    if grade_learning_records is not None:
+        if not isinstance(grade_learning_records, (dict, list)):
+            add_issue("grade_learning_records_object_or_list", "grade learning records must be an object or list", path="grade_learning_records")
+        else:
+            if isinstance(grade_learning_records, dict) and "records" in grade_learning_records and not isinstance(grade_learning_records.get("records"), list):
+                add_issue("grade_learning_records_records_list", "grade_learning_records.records must be a list", path="grade_learning_records.records")
+            for record_index, record in enumerate(_grade_records(grade_learning_records)):
+                assignments = record.get("assignments")
+                if assignments is not None and not isinstance(assignments, list):
+                    add_issue("grade_assignments_list", "record.assignments must be a list when present", path=f"grade_learning_records[{record_index}].assignments")
+                    continue
+                for assignment_index, assignment in enumerate(_as_list(assignments)):
+                    path = f"grade_learning_records[{record_index}].assignments[{assignment_index}].status"
+                    if not isinstance(assignment, dict):
+                        add_issue("grade_assignment_object", "each assignment must be an object", path=path)
+                    elif not _non_empty_text(assignment.get("status")):
+                        add_issue("grade_assignment_status", "assignment.status is required", path=path)
+
+    if reasoning_kibo is not None:
+        if not isinstance(reasoning_kibo, dict):
+            add_issue("reasoning_kibo_object", "reasoning_kibo must be an object", path="reasoning_kibo")
+        else:
+            entry_count = reasoning_kibo.get("entry_count")
+            if entry_count is not None and (not isinstance(entry_count, int) or entry_count < 0):
+                add_issue("reasoning_kibo_entry_count", "reasoning_kibo.entry_count must be a non-negative integer", path="reasoning_kibo.entry_count")
+            if "entries" in reasoning_kibo and not isinstance(reasoning_kibo.get("entries"), list):
+                add_issue("reasoning_kibo_entries_list", "reasoning_kibo.entries must be a list when present", path="reasoning_kibo.entries")
+
+    failed = list(dict.fromkeys(failed))
+    checks.update(
+        {
+            "curriculum_manifest_shape": not any(item["check_id"] == "curriculum_manifest_object" for item in issues),
+            "assessment_transcript_shape": not any(item["check_id"].startswith("assessment_") for item in issues),
+            "growth_profile_shape": not any(item["check_id"].startswith("growth_") for item in issues),
+            "grade_learning_records_shape": not any(item["check_id"].startswith("grade_") for item in issues),
+            "reasoning_kibo_shape": not any(item["check_id"].startswith("reasoning_") for item in issues),
+        }
+    )
+    return {
+        "schema": GENIUS_DERIVATION_INPUT_VALIDATION_SCHEMA,
+        "passed": not failed,
+        "status": "passed" if not failed else "failed",
+        "checks": checks,
+        "failed_checks": failed,
+        "issues": issues,
+    }
+
+
 def _evidence_counts(
     assessment_transcript: dict[str, Any] | None,
     grade_learning_records: dict[str, Any] | list[dict[str, Any]] | None,
@@ -240,20 +429,49 @@ def _evidence_counts(
     assessments = _assessment_results(assessment_transcript)
     records = _grade_records(grade_learning_records)
     passed = sum(1 for item in assessments if item.get("passed") is True)
+    qualified_assessments = [item for item in assessments if _assessment_meets_quality_floor(item)]
+    qualified_scores = [
+        score
+        for score in (_assessment_score_value(item) for item in qualified_assessments)
+        if score is not None
+    ]
     reviewed_assignments = sum(
         1
         for record in records
         for assignment in _as_list(record.get("assignments"))
         if isinstance(assignment, dict) and assignment.get("status") == "completed_and_reviewed"
     )
+    unreviewed_assignments = sum(
+        1
+        for record in records
+        for assignment in _as_list(record.get("assignments"))
+        if isinstance(assignment, dict) and assignment.get("status") != "completed_and_reviewed"
+    )
     domains = Counter(str(record.get("education_stage") or "unknown") for record in records)
+    varied_transfer_signals = {
+        str(item.get("gate_id") or item.get("gate_name") or "assessment_gate")
+        for item in qualified_assessments
+    }
+    varied_transfer_signals.update(
+        str(record.get("education_stage") or record.get("year_id") or "learning_stage")
+        for record in records
+        if any(
+            isinstance(assignment, dict) and assignment.get("status") == "completed_and_reviewed"
+            for assignment in _as_list(record.get("assignments"))
+        )
+    )
     return {
         "assessment_result_count": len(assessments),
         "passed_assessment_count": passed,
+        "qualified_passed_assessment_count": len(qualified_assessments),
+        "disqualified_passed_assessment_count": max(0, passed - len(qualified_assessments)),
+        "assessment_average_score": round(sum(qualified_scores) / len(qualified_scores), 2) if qualified_scores else 0,
         "grade_learning_record_count": len(records),
         "reviewed_assignment_count": reviewed_assignments,
-        "reviewed_transfer_evidence_count": passed + reviewed_assignments,
-        "training_evidence_unit_count": passed + reviewed_assignments + len(records),
+        "unreviewed_assignment_count": unreviewed_assignments,
+        "reviewed_transfer_evidence_count": len(qualified_assessments) + reviewed_assignments,
+        "training_evidence_unit_count": len(qualified_assessments) + reviewed_assignments + len(records),
+        "varied_transfer_evidence_count": len([item for item in varied_transfer_signals if item]),
         "curriculum_topic_count": curriculum_topic_count,
         "practice_ladder_stage_count": practice_ladder_stage_count,
         "growth_profile_schema": _as_dict(growth_profile).get("schema"),
@@ -282,8 +500,20 @@ def build_genius_derivation_profile(
     context, timed exams, feedback, and reviewed transfer work.
     """
 
-    if blueprint.get("schema") != "ai-talent-training-blueprint/v1":
+    if not isinstance(blueprint, dict):
+        raise ValueError("Invalid input contract: blueprint must be a JSON object")
+    if blueprint.get("schema") != TRAINING_BLUEPRINT_SCHEMA:
         raise ValueError("Unsupported training blueprint schema")
+    input_validation = validate_genius_derivation_inputs(
+        blueprint,
+        curriculum_manifest=curriculum_manifest,
+        assessment_transcript=assessment_transcript,
+        growth_profile=growth_profile,
+        grade_learning_records=grade_learning_records,
+        reasoning_kibo=reasoning_kibo,
+    )
+    if not input_validation["passed"]:
+        raise ValueError("Invalid input contract: " + ", ".join(input_validation["failed_checks"]))
 
     identity = _identity_from_blueprint(blueprint)
     domain_focus = _domain_focus(blueprint, curriculum_manifest, growth_profile)
@@ -291,7 +521,7 @@ def build_genius_derivation_profile(
     weak = _weak_spots(assessment_transcript, grade_learning_records, growth_profile)
     practice_ladder = _practice_ladder(grade_learning_records, assessment_transcript, topics)
     chunks = _pattern_chunks(topics, domain_focus)
-    reasoning_entries = _as_list(_as_dict(reasoning_kibo).get("entries"))
+    reasoning_entry_count = _reasoning_entry_count(reasoning_kibo)
 
     profile = {
         "schema": GENIUS_DERIVATION_PROFILE_SCHEMA,
@@ -303,6 +533,7 @@ def build_genius_derivation_profile(
             domain_focus.get("curriculum_id"),
         ),
         "status": "candidate_ready_for_training",
+        "input_contract_validation": input_validation,
         "talent": {
             "name": identity.get("name"),
             "gender": identity.get("gender"),
@@ -356,7 +587,7 @@ def build_genius_derivation_profile(
                 "time_box_before_broad_search",
                 "reviewed_work_before_memory_promotion",
             ],
-            "reasoning_entry_count": len(reasoning_entries),
+            "reasoning_entry_count": reasoning_entry_count,
         },
         "unevenness_profile": {
             "specialization_is_allowed_to_create_asymmetry": True,
@@ -442,11 +673,8 @@ def build_genius_derivation_profile(
     }
     profile = _redact_public_value(profile)
     profile["validation"] = validate_genius_derivation_profile(profile)
-    profile["status"] = (
-        "verified_training_contract"
-        if profile["validation"]["passed"]
-        else profile["validation"]["status"]
-    )
+    profile["promotion"] = evaluate_genius_candidate_promotion(profile)
+    profile["status"] = _profile_status(profile["validation"], profile["promotion"])
     if output_path is not None:
         write_genius_derivation_profile(output_path, profile)
     return profile
@@ -515,13 +743,73 @@ def validate_genius_derivation_profile(profile: dict[str, Any]) -> dict[str, Any
     status = "passed"
     if failed:
         status = "needs_training_evidence" if any(item in evidence_check_ids for item in failed) else "failed"
+    contract_status = "minimum_evidence_contract_passed" if not failed else status
     return {
         "schema": GENIUS_DERIVATION_VALIDATION_SCHEMA,
         "status": status,
+        "contract_status": contract_status,
         "passed": not failed,
         "checks": checks,
         "failed_checks": failed,
     }
+
+
+def evaluate_genius_candidate_promotion(profile: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate the stricter long-term genius candidate promotion gate."""
+
+    validation = _as_dict(profile.get("validation"))
+    scorecard = _as_dict(profile.get("scorecard"))
+    target = _as_dict(scorecard.get("genius_candidate_promotion_target"))
+    evidence = _as_dict(profile.get("evidence_summary"))
+    unevenness = _as_dict(profile.get("unevenness_profile"))
+
+    minimum_trials = int(target.get("minimum_reviewed_trials") or 8)
+    minimum_average = float(target.get("minimum_average_score") or 90)
+    requires_varied_transfer = target.get("requires_varied_transfer") is True
+    requires_documented_weaknesses = target.get("requires_documented_weaknesses") is True
+    reviewed_trials = int(evidence.get("reviewed_transfer_evidence_count") or 0)
+    average_score = float(evidence.get("assessment_average_score") or 0)
+    varied_transfer_count = int(evidence.get("varied_transfer_evidence_count") or 0)
+    weakness_guardrails = _as_list(unevenness.get("weakness_guardrails"))
+
+    checks = {
+        "training_contract_valid": validation.get("passed") is True,
+        "minimum_reviewed_trials_met": reviewed_trials >= minimum_trials,
+        "minimum_average_score_met": average_score >= minimum_average,
+        "varied_transfer_met": (not requires_varied_transfer) or varied_transfer_count >= 2,
+        "documented_weaknesses_present": (not requires_documented_weaknesses) or bool(weakness_guardrails),
+    }
+    failed = [check_id for check_id, passed in checks.items() if not passed]
+    promoted = not failed
+    return {
+        "schema": GENIUS_CANDIDATE_PROMOTION_SCHEMA,
+        "status": GENIUS_CANDIDATE_PROMOTED_STATUS if promoted else "not_ready",
+        "promoted": promoted,
+        "checks": checks,
+        "failed_checks": failed,
+        "observed": {
+            "reviewed_trials": reviewed_trials,
+            "assessment_average_score": average_score,
+            "varied_transfer_evidence_count": varied_transfer_count,
+            "weakness_guardrail_count": len(weakness_guardrails),
+        },
+        "required": {
+            "minimum_reviewed_trials": minimum_trials,
+            "minimum_average_score": minimum_average,
+            "requires_varied_transfer": requires_varied_transfer,
+            "requires_documented_weaknesses": requires_documented_weaknesses,
+        },
+    }
+
+
+def _profile_status(validation: dict[str, Any], promotion: dict[str, Any]) -> str:
+    if promotion.get("promoted") is True:
+        return GENIUS_CANDIDATE_PROMOTED_STATUS
+    if validation.get("passed") is True:
+        return TRAINING_CONTRACT_VALID_STATUS
+    if validation.get("status") == "needs_training_evidence":
+        return DRAFT_STATUS
+    return FAILED_STATUS
 
 
 def write_genius_derivation_profile(path: Path, profile: dict[str, Any]) -> None:

@@ -1,5 +1,7 @@
 # Paideia 천재 도출 엔진
 
+[![CI](https://github.com/sinmb79/paideia-genius-derivation-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/sinmb79/paideia-genius-derivation-engine/actions/workflows/ci.yml)
+
 [English](README.en.md)
 
 Paideia 천재 도출 엔진은 AI를 “더 큰 모델이면 더 똑똑해진다”는 방향으로만 보지 않습니다. 같은 한정된 용량 안에서도 무엇을 오래 훈련했고, 어떤 문제를 빨리 알아보고, 어떤 실패를 반복해서 고쳤는지에 따라 특정 분야에서 비대칭적인 전문성이 생긴다는 전제를 코드로 만든 독립 엔진입니다.
@@ -12,7 +14,7 @@ Paideia 천재 도출 엔진은 AI를 “더 큰 모델이면 더 똑똑해진�
 - 모델 크기보다 중요한 것은 제한된 용량 안의 주의 배분, 패턴 chunking, 시간 제한 시험, 오류 수정, 전이 과제입니다.
 - 외부 스킬이나 타인의 방법은 참고 자료일 뿐, 그대로 복사해 에이전트 정체성으로 승격하지 않습니다.
 - 약점과 성장 비용은 숨기지 않고 이력서처럼 남겨야 합니다.
-- 증거 없는 blueprint-only 결과물은 `needs_training_evidence` 초안입니다.
+- 증거 없는 blueprint-only 결과물은 `draft` 상태입니다.
 
 ## 시스템 흐름
 
@@ -67,7 +69,17 @@ paideia-genius-profile build-profile `
 
 `--allow-draft`가 없고 훈련 증거가 부족하면 파일은 생성되지만 종료 코드는 `2`입니다. 이는 “실패”라기보다, 증거가 부족한 프로필을 자동으로 합격 처리하지 않기 위한 안전장치입니다.
 
-`validation.passed`는 “천재 입증”이 아니라 최소 증거를 갖춘 훈련 계약 검증입니다. 반복 시험 8회, 평균 90점 같은 장기 기준은 `genius_candidate_promotion_target`으로 별도 기록되며, 실제 후보 승격은 이후 반복된 검토 시험과 전이 과제로 판단해야 합니다.
+`validation.passed`는 “천재 입증”이 아니라 최소 증거를 갖춘 훈련 계약 검증입니다. 반복 시험 8회, 평균 90점 같은 장기 기준은 별도 `promotion` gate가 검사합니다.
+
+## 상태 체계
+
+| 상태 | 의미 |
+| --- | --- |
+| `draft` | blueprint는 유효하지만 최소 훈련 증거가 부족합니다. |
+| `training_contract_valid` | 최소 증거를 갖춘 훈련 계약입니다. 천재 후보 입증은 아닙니다. |
+| `genius_candidate_promoted` | 장기 promotion gate를 통과했습니다. 8회 이상 reviewed trial, 평균 90점 이상, varied transfer, documented weakness가 필요합니다. |
+
+`validation.contract_status`는 `minimum_evidence_contract_passed`처럼 최소 계약 검증 결과를 말하고, `promotion.status`는 장기 천재 후보 승격 여부를 말합니다.
 
 ## Python 사용
 
@@ -92,14 +104,16 @@ print(profile["validation"]["status"])
 
 상세 입력/출력 계약은 [docs/engine_contract.ko.md](docs/engine_contract.ko.md)를 보시면 됩니다.
 
-최소 필수 입력은 `ai-talent-training-blueprint/v1` schema를 가진 blueprint입니다. `passed` 검증을 받으려면 다음 중 충분한 훈련 증거가 필요합니다.
+최소 필수 입력은 `ai-talent-training-blueprint/v1` schema를 가진 blueprint입니다. 코드 레벨에서 `identity.name`, `track.track_id`, `track.domains`를 검증합니다. `passed` 검증을 받으려면 다음 중 충분한 훈련 증거가 필요합니다.
 
 - curriculum manifest
 - assessment transcript
 - growth profile
 - grade learning records
-- reviewed assignment 또는 passed assessment
+- `completed_and_reviewed` assignment 또는 quality floor를 통과한 passed assessment
 - reasoning kibo JSONL의 entry count
+
+Assessment는 `passed: true`만으로는 충분하지 않습니다. `score`가 있으면 80점 이상이어야 하고, `rubric_scores`가 있으면 각 numeric score가 20점 이상이어야 reviewed evidence로 계산됩니다.
 
 ## 공개 안전 규칙
 
@@ -116,6 +130,8 @@ py -3.12 -m py_compile src\paideia_genius_derivation\genius_derivation.py src\pa
 py -3.12 -m unittest discover -s tests -v
 py -3.12 -m bandit -q -r src -c pyproject.toml -f json -o runs\bandit_report.json
 ```
+
+GitHub Actions는 Python 3.10, 3.11, 3.12 matrix에서 compile, unittest, Bandit scan을 실행합니다.
 
 ## 연구 근거
 
