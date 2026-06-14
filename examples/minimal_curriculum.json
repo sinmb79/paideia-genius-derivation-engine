@@ -1,0 +1,16 @@
+{
+  "curriculum_id": "securities-genius-sample",
+  "domain": "securities_research",
+  "core_topics": [
+    "valuation",
+    "cash flow analysis",
+    "risk checklist",
+    "counterexample search"
+  ],
+  "assessment_ladder": {
+    "required_for_hiring": [
+      "valuation_case_report",
+      "risk_counterexample_exam"
+    ]
+  }
+}

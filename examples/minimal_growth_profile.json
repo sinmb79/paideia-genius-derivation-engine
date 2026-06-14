@@ -1,0 +1,13 @@
+{
+  "schema": "paideia-growth-profile/v1",
+  "asymmetry_profile": {
+    "strength_biases": [
+      "slow evidence patience",
+      "valuation pattern memory"
+    ],
+    "growth_costs": [
+      "may overfocus on downside scenarios"
+    ],
+    "domain_obsession": "securities_research"
+  }
+}

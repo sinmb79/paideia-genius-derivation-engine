@@ -1,0 +1,27 @@
+{
+  "records": [
+    {
+      "year_id": "doctoral_year_1",
+      "education_stage": "doctoral_research",
+      "learning_data": [
+        "valuation memo",
+        "risk checklist",
+        "public filing comparison"
+      ],
+      "required_exams": [
+        "valuation_case_report"
+      ],
+      "assignments": [
+        {
+          "id": "assignment_001",
+          "status": "completed_and_reviewed"
+        }
+      ],
+      "feedback_loop": {
+        "observed_weak_spots": [
+          "counterexample_depth"
+        ]
+      }
+    }
+  ]
+}

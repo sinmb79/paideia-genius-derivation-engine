@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "gate_id": "valuation_case_report",
+      "gate_name": "Valuation case report",
+      "passed": true,
+      "rubric_scores": {
+        "evidence_precision": 24,
+        "counterexample_depth": 18
+      },
+      "weak_spots": [
+        "counterexample_depth"
+      ]
+    }
+  ]
+}
