@@ -8,6 +8,41 @@ Paideia 천재 도출 엔진은 AI를 “더 큰 모델이면 더 똑똑해진�
 
 이 저장소는 Paideia-Agent 본체에서 분리한 standalone 패키지입니다. 네트워크 호출, API key 저장, OAuth 토큰 저장, hidden chain-of-thought 저장 없이, 교육과정과 시험/과제 증거를 바탕으로 “특정 전공 천재 후보 프로필”을 생성하고 검증합니다.
 
+## v0.2.0 릴리스 요약
+
+`v0.2.0`은 천재 후보 승격을 더 엄격하게 만든 validation hardening 릴리스입니다. 단순히 “증거가 조금 있다”는 이유로 천재 후보가 되지 않도록, 최소 훈련 계약과 장기 promotion gate를 분리했습니다.
+
+### 주요 변경 사항
+
+| 변경 | 왜 필요한가 |
+| --- | --- |
+| Profile 상태를 `draft`, `training_contract_valid`, `genius_candidate_promoted`로 분리 | 초안, 최소 계약 통과, 장기 승격을 혼동하지 않기 위해서입니다. |
+| `validation.contract_status = minimum_evidence_contract_passed` 추가 | `validation.passed`가 천재 입증이 아니라 최소 증거 계약 통과임을 명확히 합니다. |
+| 별도 `promotion` gate 추가 | 장기 시험 성과와 전이 증거를 독립적으로 검증하기 위해서입니다. |
+| `scored_reviewed_trial_count >= 8` 필수화 | 과제 리뷰 수만 채워 단일 고득점 시험으로 승격되는 shortcut을 막습니다. |
+| Assessment와 grade learning record 입력 검증 강화 | 깨진 입력이 조용히 증거로 계산되는 일을 막습니다. |
+| Reasoning Kibo JSONL streaming 처리 | raw reasoning을 저장하지 않고 entry 수만 반영하기 위해서입니다. |
+
+### Breaking Changes
+
+기존 코드가 `profile["status"]` 값을 직접 비교했다면 수정이 필요할 수 있습니다.
+
+| 기존 기대 | v0.2.0 이후 권장 |
+| --- | --- |
+| evidence-backed 결과가 바로 candidate status라고 가정 | `training_contract_valid`와 `genius_candidate_promoted`를 구분 |
+| reviewed assignment 수를 promotion trial로 같이 계산 | `promotion["observed"]["scored_reviewed_trials"]` 확인 |
+| `validation.passed`를 천재 입증으로 해석 | `validation`은 최소 계약, `promotion`은 장기 승격으로 분리 |
+
+```python
+status = profile["status"]
+if status == "genius_candidate_promoted":
+    run_promoted_agent_path(profile)
+elif status == "training_contract_valid":
+    keep_training(profile)
+else:
+    request_more_evidence(profile)
+```
+
 ## 핵심 철학
 
 - 천재성은 일반 초지능 선언이 아니라 검증 가능한 훈련 계약입니다.
@@ -73,6 +108,15 @@ paideia-genius-profile build-profile `
 
 ## 상태 체계
 
+```mermaid
+stateDiagram-v2
+    [*] --> draft
+    draft --> training_contract_valid: 최소 증거 계약 통과
+    training_contract_valid --> genius_candidate_promoted: 장기 promotion gate 통과
+    draft --> failed: 입력 계약 실패
+    training_contract_valid --> failed: 출력 구조 실패
+```
+
 | 상태 | 의미 |
 | --- | --- |
 | `draft` | blueprint는 유효하지만 최소 훈련 증거가 부족합니다. |
@@ -80,6 +124,16 @@ paideia-genius-profile build-profile `
 | `genius_candidate_promoted` | 장기 promotion gate를 통과했습니다. 8회 이상 scored reviewed trial, 평균 90점 이상, varied transfer, documented weakness가 필요합니다. |
 
 `validation.contract_status`는 `minimum_evidence_contract_passed`처럼 최소 계약 검증 결과를 말하고, `promotion.status`는 장기 천재 후보 승격 여부를 말합니다.
+
+### `genius_candidate_promoted` 최소 조건
+
+| 조건 | 기준 |
+| --- | --- |
+| Base validation | `validation.passed is True` |
+| Scored reviewed trials | `scored_reviewed_trial_count >= 8` |
+| Average score | `assessment_average_score >= 90` |
+| Varied transfer | 서로 다른 transfer evidence 2종 이상 |
+| Weakness guardrail | 약점/오류 guardrail이 기록되어 있어야 함 |
 
 ## Python 사용
 
@@ -96,13 +150,52 @@ blueprint = {
     },
 }
 
-profile = build_genius_derivation_profile(blueprint)
-print(profile["validation"]["status"])
+assessment_transcript = {
+    "results": [
+        {
+            "gate_id": "valuation_case_report",
+            "passed": True,
+            "score": 92,
+            "rubric_scores": {"evidence_precision": 24, "counterexample_depth": 23},
+            "weak_spots": ["overfocus_on_downside"],
+        }
+    ]
+}
+
+growth_profile = {
+    "schema": "paideia-growth-profile/v1",
+    "asymmetry_profile": {
+        "strength_biases": ["slow valuation patience"],
+        "growth_costs": ["can overfocus on downside"],
+    },
+}
+
+grade_learning_records = {
+    "records": [
+        {
+            "education_stage": "doctoral_research",
+            "assignments": [{"status": "completed_and_reviewed"}],
+        }
+    ]
+}
+
+profile = build_genius_derivation_profile(
+    blueprint,
+    assessment_transcript=assessment_transcript,
+    growth_profile=growth_profile,
+    grade_learning_records=grade_learning_records,
+)
+
+print(profile["status"])                         # training_contract_valid
+print(profile["validation"]["contract_status"])  # minimum_evidence_contract_passed
+print(profile["promotion"]["status"])            # not_ready
 ```
+
+더 긴 예제는 `examples/basic_profile.py`와 `examples/promotion_gate_examples.py`를 보시면 됩니다.
 
 ## 입력 계약
 
-상세 입력/출력 계약은 [docs/engine_contract.ko.md](docs/engine_contract.ko.md)를 보시면 됩니다.
+상세 입력/출력 계약은 [docs/engine_contract.ko.md](docs/engine_contract.ko.md)를 보시면 됩니다. 상태 전이는 [docs/profile_lifecycle.ko.md](docs/profile_lifecycle.ko.md), promotion 조건은 [docs/promotion_gates.ko.md](docs/promotion_gates.ko.md), 검증 규칙은 [docs/validation_rules.ko.md](docs/validation_rules.ko.md)에 따로 정리했습니다.
 
 최소 필수 입력은 `ai-talent-training-blueprint/v1` schema를 가진 blueprint입니다. 코드 레벨에서 `identity.name`, `track.track_id`, `track.domains`를 검증합니다. `passed` 검증을 받으려면 다음 중 충분한 훈련 증거가 필요합니다.
 
@@ -122,6 +215,8 @@ Assessment는 `passed: true`만으로는 충분하지 않습니다. `score`가 �
 - reasoning kibo 입력은 원문을 저장하지 않고 entry 개수만 반영합니다.
 - OpenAI/GitHub/Slack/Google 계열의 명백한 provider token 문자열은 출력 전 `[redacted-sensitive-value]`로 대체합니다.
 - 외부 스킬 원문을 그대로 승격하지 않습니다.
+
+보안 경계와 신고 방식은 [SECURITY.md](SECURITY.md), 릴리스 이력은 [CHANGELOG.md](CHANGELOG.md)를 보시면 됩니다.
 
 ## 검증
 

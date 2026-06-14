@@ -2,7 +2,7 @@
 
 [English](engine_contract.en.md)
 
-이 문서는 Paideia 천재 도출 엔진의 입력과 출력 계약을 설명합니다.
+이 문서는 Paideia 천재 도출 엔진의 입력과 출력 계약을 설명합니다. 상태 전이는 [Profile 생명주기](profile_lifecycle.ko.md), promotion 조건은 [Promotion Gate](promotion_gates.ko.md), 세부 검증 규칙은 [Validation Rules](validation_rules.ko.md)를 함께 보시면 됩니다.
 
 ## 입력
 

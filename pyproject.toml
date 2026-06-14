@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,8 @@ version = "0.2.0"
 description = "Standalone Paideia engine for deriving domain-specific genius profiles from training evidence."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "22B" }]
 keywords = [
     "ai-agent",
@@ -20,13 +21,18 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sinmb79/paideia-genius-derivation-engine"
+Repository = "https://github.com/sinmb79/paideia-genius-derivation-engine"
+Issues = "https://github.com/sinmb79/paideia-genius-derivation-engine/issues"
+Changelog = "https://github.com/sinmb79/paideia-genius-derivation-engine/releases"
 
 [project.scripts]
 paideia-genius-profile = "paideia_genius_derivation.cli:main"
