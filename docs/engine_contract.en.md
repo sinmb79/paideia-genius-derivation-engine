@@ -2,7 +2,7 @@
 
 [한국어](engine_contract.ko.md)
 
-This document defines the input and output contract for the Paideia Genius Derivation Engine.
+This document defines the input and output contract for the Paideia Genius Derivation Engine. See [Profile Lifecycle](profile_lifecycle.en.md), [Promotion Gate](promotion_gates.en.md), and [Validation Rules](validation_rules.en.md) for state transition, promotion, and detailed validation behavior.
 
 ## Inputs
 
