@@ -30,16 +30,18 @@ def _read_json(path: str | None, *, label: str) -> Any:
 def _read_reasoning_kibo_jsonl(path: str | None) -> dict[str, Any] | None:
     if not path:
         return None
-    entries: list[dict[str, Any]] = []
+    entry_count = 0
     try:
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
+        handle = Path(path).open("r", encoding="utf-8")
     except FileNotFoundError as exc:
         raise CliInputError("input_file_not_found", f"reasoning kibo file not found: {path}") from exc
     except OSError as exc:
         raise CliInputError("input_file_unreadable", f"reasoning kibo file cannot be read: {path}") from exc
-    for line_number, line in enumerate(lines, start=1):
-        stripped = line.strip()
-        if stripped:
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
             try:
                 item = json.loads(stripped)
             except json.JSONDecodeError as exc:
@@ -47,9 +49,13 @@ def _read_reasoning_kibo_jsonl(path: str | None) -> dict[str, Any] | None:
                     "invalid_jsonl_input",
                     f"reasoning kibo line {line_number} is not valid JSON: {path}",
                 ) from exc
-            if isinstance(item, dict):
-                entries.append(item)
-    return {"entries": entries}
+            if not isinstance(item, dict):
+                raise CliInputError(
+                    "invalid_jsonl_shape",
+                    f"reasoning kibo line {line_number} must be a JSON object: {path}",
+                )
+            entry_count += 1
+    return {"entry_count": entry_count}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,6 +133,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             failed_check = (
                 "unsupported_training_blueprint_schema"
                 if "Unsupported training blueprint schema" in str(exc)
+                else "invalid_input_contract"
+                if "Invalid input contract" in str(exc)
                 else "invalid_input_value"
             )
             _write_failure_profile(output_path, str(exc), failed_check)

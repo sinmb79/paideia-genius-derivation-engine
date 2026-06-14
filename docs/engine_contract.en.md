@@ -28,7 +28,11 @@ Required.
 }
 ```
 
-If `schema` does not match, the library raises `ValueError`; the CLI writes a failed artifact and returns exit code `2`.
+If `schema` does not match, the library raises `ValueError`; the CLI writes a failed artifact and returns exit code `2`. The code-level input contract requires:
+
+- `identity.name`: non-empty string
+- `track.track_id`: non-empty string
+- `track.domains`: array containing at least one string
 
 ### Curriculum Manifest
 
@@ -36,7 +40,13 @@ Provides the domain scope, core topics, and assessment ladder. Without it, the e
 
 ### Assessment Transcript
 
-Provides exam results, weak spots, and rubric scores. Passed assessments count as evidence.
+Provides exam results, weak spots, and rubric scores. Each `results[]` item must expose boolean `passed`.
+
+Passed assessments only count as reviewed evidence when they meet the quality floor:
+
+- `score >= 80` when `score` is present.
+- all numeric `rubric_scores` are at least 20 when rubric scores are present.
+- assessments below the quality floor can still produce weakness guardrails, but they do not increase `reviewed_transfer_evidence_count`.
 
 ### Growth Profile
 
@@ -44,7 +54,7 @@ Provides strength biases, growth costs, and domain obsession. It preserves asymm
 
 ### Grade Learning Records
 
-Provides stage-by-stage learning records, assignments, and feedback loops. Assignments marked `completed_and_reviewed` count as evidence.
+Provides stage-by-stage learning records, assignments, and feedback loops. When `assignments[]` items are present, each assignment needs `status`. Only assignments marked `completed_and_reviewed` count as reviewed transfer evidence.
 
 ### Reasoning Kibo JSONL
 
@@ -66,14 +76,33 @@ Key sections:
 - `evidence_summary`: counted validation evidence
 - `public_safe`: public-safety flags
 - `validation`: profile validation result
+- `promotion`: long-term genius candidate promotion gate result
 
 `scorecard.profile_validation_threshold` defines the minimum evidence gate for a valid training contract. `scorecard.genius_candidate_promotion_target` is a long-term goal for later repeated trials and transfer work, not the direct base `validation.passed` condition.
+
+## Profile Status
+
+| Status | Meaning |
+| --- | --- |
+| `draft` | The blueprint is valid, but minimum training evidence is missing. |
+| `training_contract_valid` | The minimum-evidence contract passed, but long-term genius promotion has not. |
+| `genius_candidate_promoted` | The stricter `promotion` gate passed. |
 
 ## Validation Status
 
 - `passed`: structure and minimum training-contract evidence passed. It does not prove genius.
 - `needs_training_evidence`: the profile was built, but evidence is insufficient.
 - `failed`: schema or core structure is invalid.
+
+## Promotion Status
+
+`promotion.status` becomes `genius_candidate_promoted` only when all of these are true:
+
+- base `validation.passed`
+- `scored_reviewed_trial_count >= 8`
+- `assessment_average_score >= 90`
+- at least two varied transfer evidence signals
+- weakness guardrails are documented
 
 ## Security Boundary
 

@@ -15,7 +15,9 @@ sys.path.insert(0, str(SRC))
 from paideia_genius_derivation import (  # noqa: E402
     REQUIRED_PRACTICE_CYCLE,
     build_genius_derivation_profile,
+    evaluate_genius_candidate_promotion,
     read_genius_derivation_profile,
+    validate_genius_derivation_inputs,
     validate_genius_derivation_profile,
     write_genius_derivation_profile,
 )
@@ -85,6 +87,7 @@ class GeniusDerivationEngineTests(unittest.TestCase):
     def test_blueprint_only_profile_is_draft_until_training_evidence_exists(self) -> None:
         profile = build_genius_derivation_profile(BLUEPRINT)
 
+        self.assertEqual(profile["status"], "draft")
         self.assertEqual(profile["validation"]["status"], "needs_training_evidence")
         self.assertFalse(profile["validation"]["passed"])
         self.assertIn("training_evidence_present", profile["validation"]["failed_checks"])
@@ -102,6 +105,9 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         validation = validate_genius_derivation_profile(profile)
 
         self.assertTrue(validation["passed"])
+        self.assertEqual(profile["status"], "training_contract_valid")
+        self.assertEqual(profile["validation"]["contract_status"], "minimum_evidence_contract_passed")
+        self.assertEqual(profile["promotion"]["status"], "not_ready")
         self.assertEqual(profile["deliberate_practice_program"]["cycle"], REQUIRED_PRACTICE_CYCLE)
         self.assertEqual(
             profile["capacity_budget"]["strategy"],
@@ -110,14 +116,17 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertTrue(profile["design_claim"]["not_general_superintelligence"])
         self.assertTrue(profile["design_claim"]["not_model_size_claim"])
         self.assertIn("counterexample_depth", profile["unevenness_profile"]["weakness_guardrails"])
-        self.assertGreaterEqual(profile["evidence_summary"]["training_evidence_unit_count"], 3)
+        self.assertEqual(profile["evidence_summary"]["qualified_passed_assessment_count"], 0)
+        self.assertEqual(profile["evidence_summary"]["disqualified_passed_assessment_count"], 1)
+        self.assertEqual(profile["evidence_summary"]["reviewed_assignment_count"], 1)
+        self.assertGreaterEqual(profile["evidence_summary"]["training_evidence_unit_count"], 2)
         self.assertEqual(
             profile["scorecard"]["profile_validation_threshold"]["purpose"],
             "minimum evidence required to validate this training contract, not to prove genius",
         )
         self.assertEqual(
             profile["scorecard"]["genius_candidate_promotion_target"]["purpose"],
-            "long-term promotion target after repeated reviewed trials; not the base profile validation gate",
+            "long-term promotion target after repeated scored reviewed trials; not the base profile validation gate",
         )
         self.assertFalse(profile["public_safe"]["network_call_performed"])
         self.assertEqual(profile["public_safe"]["private_reasoning_trace"], "not_stored")
@@ -137,6 +146,138 @@ class GeniusDerivationEngineTests(unittest.TestCase):
 
         self.assertEqual(loaded["profile_id"], profile["profile_id"])
         self.assertEqual(loaded["validation"]["status"], "passed")
+        self.assertEqual(loaded["status"], "training_contract_valid")
+
+    def test_input_contract_requires_identity_track_and_domains(self) -> None:
+        invalid = json.loads(json.dumps(BLUEPRINT))
+        invalid["identity"]["name"] = ""
+        invalid["track"]["domains"] = []
+
+        validation = validate_genius_derivation_inputs(invalid)
+
+        self.assertFalse(validation["passed"])
+        self.assertIn("identity_name", validation["failed_checks"])
+        self.assertIn("track_domains", validation["failed_checks"])
+        with self.assertRaisesRegex(ValueError, "identity_name"):
+            build_genius_derivation_profile(invalid)
+
+    def test_invalid_optional_input_shape_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "assessment_results_list"):
+            build_genius_derivation_profile(
+                BLUEPRINT,
+                curriculum_manifest=CURRICULUM,
+                assessment_transcript={"results": "not-a-list"},
+            )
+
+    def test_grade_records_require_record_objects(self) -> None:
+        with self.assertRaisesRegex(ValueError, "grade_record_object"):
+            build_genius_derivation_profile(
+                BLUEPRINT,
+                curriculum_manifest=CURRICULUM,
+                grade_learning_records={"records": ["bad-record"]},
+            )
+
+    def test_low_score_assessment_does_not_count_as_reviewed_evidence(self) -> None:
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            assessment_transcript=ASSESSMENT,
+            growth_profile=GROWTH,
+        )
+
+        self.assertEqual(profile["status"], "draft")
+        self.assertEqual(profile["evidence_summary"]["qualified_passed_assessment_count"], 0)
+        self.assertEqual(profile["evidence_summary"]["reviewed_transfer_evidence_count"], 0)
+        self.assertIn("reviewed_transfer_or_assessment_present", profile["validation"]["failed_checks"])
+
+    def test_unreviewed_assignment_does_not_count_as_reviewed_transfer(self) -> None:
+        unreviewed_records = {
+            "records": [
+                {
+                    "year_id": "doctoral_year_1",
+                    "education_stage": "doctoral_research",
+                    "learning_data": ["valuation memo"],
+                    "assignments": [{"status": "submitted"}],
+                }
+            ]
+        }
+
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            growth_profile=GROWTH,
+            grade_learning_records=unreviewed_records,
+        )
+
+        self.assertEqual(profile["status"], "draft")
+        self.assertEqual(profile["evidence_summary"]["unreviewed_assignment_count"], 1)
+        self.assertEqual(profile["evidence_summary"]["reviewed_transfer_evidence_count"], 0)
+        self.assertIn("reviewed_transfer_or_assessment_present", profile["validation"]["failed_checks"])
+
+    def test_genius_candidate_promotion_requires_stricter_long_term_gate(self) -> None:
+        transcript = {
+            "results": [
+                {
+                    "gate_id": f"transfer_gate_{index}",
+                    "passed": True,
+                    "score": 95,
+                    "rubric_scores": {"evidence_precision": 24, "counterexample_depth": 24},
+                    "weak_spots": ["overconfidence"],
+                }
+                for index in range(8)
+            ]
+        }
+
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            assessment_transcript=transcript,
+            growth_profile=GROWTH,
+        )
+        promotion = evaluate_genius_candidate_promotion(profile)
+
+        self.assertEqual(profile["status"], "genius_candidate_promoted")
+        self.assertTrue(promotion["promoted"])
+        self.assertEqual(promotion["observed"]["reviewed_trials"], 8)
+        self.assertEqual(promotion["observed"]["scored_reviewed_trials"], 8)
+        self.assertEqual(promotion["observed"]["assessment_average_score"], 95.0)
+
+    def test_genius_candidate_promotion_requires_eight_scored_reviewed_trials(self) -> None:
+        transcript = {
+            "results": [
+                {
+                    "gate_id": "one_high_score_gate",
+                    "passed": True,
+                    "score": 95,
+                    "rubric_scores": {"evidence_precision": 24, "counterexample_depth": 24},
+                    "weak_spots": ["overconfidence"],
+                }
+            ]
+        }
+        records = {
+            "records": [
+                {
+                    "year_id": f"reviewed_assignment_{index}",
+                    "education_stage": f"transfer_stage_{index}",
+                    "learning_data": ["transfer work"],
+                    "assignments": [{"status": "completed_and_reviewed"}],
+                }
+                for index in range(7)
+            ]
+        }
+
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            assessment_transcript=transcript,
+            growth_profile=GROWTH,
+            grade_learning_records=records,
+        )
+
+        self.assertEqual(profile["status"], "training_contract_valid")
+        self.assertEqual(profile["promotion"]["observed"]["reviewed_trials"], 8)
+        self.assertEqual(profile["promotion"]["observed"]["scored_reviewed_trials"], 1)
+        self.assertIn("minimum_scored_reviewed_trials_met", profile["promotion"]["failed_checks"])
 
     def test_public_profile_redacts_obvious_provider_secrets_and_keeps_reasoning_private(self) -> None:
         secret = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"
@@ -165,6 +306,38 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertNotIn(raw_reasoning, dumped)
         self.assertIn("[redacted-sensitive-value]", dumped)
         self.assertEqual(profile["cognitive_kibo_targets"]["reasoning_entry_count"], 1)
+
+    def test_cli_counts_reasoning_kibo_jsonl_without_exporting_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            blueprint_path = tmp_path / "blueprint.json"
+            kibo_path = tmp_path / "large_reasoning_kibo.jsonl"
+            output_path = tmp_path / "draft_profile.json"
+            blueprint_path.write_text(json.dumps(BLUEPRINT), encoding="utf-8")
+            kibo_path.write_text(
+                "\n".join(json.dumps({"id": f"kibo-{index}", "raw": "do-not-export-raw-kibo"}) for index in range(1000)),
+                encoding="utf-8",
+            )
+
+            code = cli_main(
+                [
+                    "build-profile",
+                    "--blueprint",
+                    str(blueprint_path),
+                    "--reasoning-kibo",
+                    str(kibo_path),
+                    "--allow-draft",
+                    "--output",
+                    str(output_path),
+                ]
+            )
+            profile = json.loads(output_path.read_text(encoding="utf-8"))
+            dumped = json.dumps(profile)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(profile["cognitive_kibo_targets"]["reasoning_entry_count"], 1000)
+        self.assertNotIn("do-not-export-raw-kibo", dumped)
+        self.assertNotIn('"entries"', dumped)
 
     def test_unsupported_schema_writes_failed_cli_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

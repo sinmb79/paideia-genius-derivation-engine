@@ -1,5 +1,7 @@
 # Paideia Genius Derivation Engine
 
+[![CI](https://github.com/sinmb79/paideia-genius-derivation-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/sinmb79/paideia-genius-derivation-engine/actions/workflows/ci.yml)
+
 [한국어](README.md)
 
 The Paideia Genius Derivation Engine treats narrow excellence as a training outcome, not a raw model-size claim. Within a bounded capacity, an agent can become unusually strong in a specific domain when its attention, chunks, timed practice, feedback, mistakes, and transfer work are repeatedly shaped by evidence.
@@ -12,7 +14,7 @@ This repository is a standalone extraction from Paideia-Agent. It does not perfo
 - Fixed-capacity efficiency can matter more than broad compute scaling for narrow expertise.
 - External skills and other people's methods may be studied, but they are not promoted verbatim into the agent identity.
 - Weaknesses and growth costs are preserved as résumé-like guardrails.
-- A blueprint-only profile is a `needs_training_evidence` draft.
+- A blueprint-only profile has top-level status `draft`.
 
 ## Flow
 
@@ -67,7 +69,17 @@ paideia-genius-profile build-profile `
 
 Without `--allow-draft`, insufficient evidence produces an artifact but returns exit code `2`.
 
-`validation.passed` means the training contract has enough minimum evidence to be valid; it does not prove genius. Longer-term criteria such as eight reviewed trials and an average score of 90 are recorded separately as `genius_candidate_promotion_target`.
+`validation.passed` means the training contract has enough minimum evidence to be valid; it does not prove genius. Longer-term criteria such as eight scored reviewed trials and an average score of 90 are checked by a separate `promotion` gate.
+
+## Status Model
+
+| Status | Meaning |
+| --- | --- |
+| `draft` | The blueprint is valid, but minimum training evidence is missing. |
+| `training_contract_valid` | The profile is a minimum-evidence training contract, not proof of genius. |
+| `genius_candidate_promoted` | The stricter long-term promotion gate passed: at least 8 scored reviewed trials, average score 90+, varied transfer, and documented weaknesses. |
+
+`validation.contract_status` describes the minimum contract gate, such as `minimum_evidence_contract_passed`. `promotion.status` describes long-term genius candidate promotion.
 
 ## Python
 
@@ -92,6 +104,8 @@ print(profile["validation"]["status"])
 
 See [docs/engine_contract.en.md](docs/engine_contract.en.md).
 
+The library validates `identity.name`, `track.track_id`, and `track.domains` before profile construction. Passed assessments only count as reviewed evidence if they meet the assessment quality floor: `score >= 80` when a score is present, and all numeric `rubric_scores` are at least 20 when rubric scores are present.
+
 ## Public-Safe Rules
 
 - No network calls.
@@ -107,6 +121,8 @@ py -3.12 -m py_compile src\paideia_genius_derivation\genius_derivation.py src\pa
 py -3.12 -m unittest discover -s tests -v
 py -3.12 -m bandit -q -r src -c pyproject.toml -f json -o runs\bandit_report.json
 ```
+
+GitHub Actions runs compile, unittest, and Bandit scan on Python 3.10, 3.11, and 3.12.
 
 ## Research Basis
 
