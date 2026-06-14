@@ -67,6 +67,8 @@ paideia-genius-profile build-profile `
 
 `--allow-draft`가 없고 훈련 증거가 부족하면 파일은 생성되지만 종료 코드는 `2`입니다. 이는 “실패”라기보다, 증거가 부족한 프로필을 자동으로 합격 처리하지 않기 위한 안전장치입니다.
 
+`validation.passed`는 “천재 입증”이 아니라 최소 증거를 갖춘 훈련 계약 검증입니다. 반복 시험 8회, 평균 90점 같은 장기 기준은 `genius_candidate_promotion_target`으로 별도 기록되며, 실제 후보 승격은 이후 반복된 검토 시험과 전이 과제로 판단해야 합니다.
+
 ## Python 사용
 
 ```python

@@ -62,14 +62,16 @@ Key sections:
 - `deliberate_practice_program`: repeated practice cycle and ladder
 - `cognitive_kibo_targets`: pattern chunks and compression rules
 - `unevenness_profile`: strengths, weaknesses, and growth costs
-- `scorecard`: evaluation metrics and promotion requirements
+- `scorecard`: evaluation metrics, minimum training-contract validation threshold, and long-term genius candidate promotion target
 - `evidence_summary`: counted validation evidence
 - `public_safe`: public-safety flags
 - `validation`: profile validation result
 
+`scorecard.profile_validation_threshold` defines the minimum evidence gate for a valid training contract. `scorecard.genius_candidate_promotion_target` is a long-term goal for later repeated trials and transfer work, not the direct base `validation.passed` condition.
+
 ## Validation Status
 
-- `passed`: structure and training evidence passed.
+- `passed`: structure and minimum training-contract evidence passed. It does not prove genius.
 - `needs_training_evidence`: the profile was built, but evidence is insufficient.
 - `failed`: schema or core structure is invalid.
 

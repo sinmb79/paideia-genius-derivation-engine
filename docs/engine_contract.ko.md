@@ -62,14 +62,16 @@
 - `deliberate_practice_program`: 반복 훈련 cycle과 ladder
 - `cognitive_kibo_targets`: pattern chunk와 압축 규칙
 - `unevenness_profile`: 강점, 약점, 성장 비용
-- `scorecard`: 평가 metric과 승격 조건
+- `scorecard`: 평가 metric, 최소 훈련 계약 검증 기준, 장기 천재 후보 승격 목표
 - `evidence_summary`: 검증 증거 수
 - `public_safe`: 공개 안전 플래그
 - `validation`: profile 검증 결과
 
+`scorecard.profile_validation_threshold`는 이 profile이 훈련 계약으로 유효한지 판단하는 최소 기준입니다. `scorecard.genius_candidate_promotion_target`는 이후 반복 시험과 전이 과제로 달성해야 하는 장기 목표이며, base `validation.passed`의 직접 조건이 아닙니다.
+
 ## 검증 상태
 
-- `passed`: 훈련 증거와 구조 검증을 통과했습니다.
+- `passed`: 최소 훈련 증거와 구조 검증을 통과한 훈련 계약입니다. 천재성이 입증됐다는 뜻은 아닙니다.
 - `needs_training_evidence`: 구조는 만들었지만 증거가 부족합니다.
 - `failed`: schema 또는 핵심 구조가 맞지 않습니다.
 

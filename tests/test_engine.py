@@ -111,6 +111,14 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertTrue(profile["design_claim"]["not_model_size_claim"])
         self.assertIn("counterexample_depth", profile["unevenness_profile"]["weakness_guardrails"])
         self.assertGreaterEqual(profile["evidence_summary"]["training_evidence_unit_count"], 3)
+        self.assertEqual(
+            profile["scorecard"]["profile_validation_threshold"]["purpose"],
+            "minimum evidence required to validate this training contract, not to prove genius",
+        )
+        self.assertEqual(
+            profile["scorecard"]["genius_candidate_promotion_target"]["purpose"],
+            "long-term promotion target after repeated reviewed trials; not the base profile validation gate",
+        )
         self.assertFalse(profile["public_safe"]["network_call_performed"])
         self.assertEqual(profile["public_safe"]["private_reasoning_trace"], "not_stored")
 
@@ -179,6 +187,40 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(profile["status"], "failed")
         self.assertIn("unsupported_training_blueprint_schema", profile["validation"]["failed_checks"])
+
+    def test_cli_writes_controlled_failure_for_missing_file_and_bad_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            missing_output = tmp_path / "missing_profile.json"
+            bad_shape_path = tmp_path / "bad_shape.json"
+            bad_shape_output = tmp_path / "bad_shape_profile.json"
+            bad_shape_path.write_text(json.dumps([BLUEPRINT]), encoding="utf-8")
+
+            missing_code = cli_main(
+                [
+                    "build-profile",
+                    "--blueprint",
+                    str(tmp_path / "missing_blueprint.json"),
+                    "--output",
+                    str(missing_output),
+                ]
+            )
+            bad_shape_code = cli_main(
+                [
+                    "build-profile",
+                    "--blueprint",
+                    str(bad_shape_path),
+                    "--output",
+                    str(bad_shape_output),
+                ]
+            )
+            missing_profile = json.loads(missing_output.read_text(encoding="utf-8"))
+            bad_shape_profile = json.loads(bad_shape_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(missing_code, 2)
+        self.assertEqual(bad_shape_code, 2)
+        self.assertEqual(missing_profile["validation"]["failed_checks"], ["input_file_not_found"])
+        self.assertEqual(bad_shape_profile["validation"]["failed_checks"], ["invalid_input_shape"])
 
     def test_cli_requires_evidence_unless_draft_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

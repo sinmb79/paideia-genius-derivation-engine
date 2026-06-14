@@ -387,7 +387,15 @@ def build_genius_derivation_profile(
                 }
                 for metric in REQUIRED_SCORECARD_METRICS
             ],
-            "genius_candidate_threshold": {
+            "profile_validation_threshold": {
+                "purpose": "minimum evidence required to validate this training contract, not to prove genius",
+                "minimum_training_evidence_units": 1,
+                "minimum_reviewed_transfer_evidence_count": 1,
+                "requires_growth_or_grade_learning_evidence": True,
+                "requires_domain_scope_or_curriculum_evidence": True,
+            },
+            "genius_candidate_promotion_target": {
+                "purpose": "long-term promotion target after repeated reviewed trials; not the base profile validation gate",
                 "minimum_reviewed_trials": 8,
                 "minimum_average_score": 90,
                 "requires_varied_transfer": True,
@@ -458,6 +466,8 @@ def validate_genius_derivation_profile(profile: dict[str, Any]) -> dict[str, Any
     unevenness = _as_dict(profile.get("unevenness_profile"))
     evidence = _as_dict(profile.get("evidence_summary"))
     domain_focus = _as_dict(profile.get("domain_focus"))
+    profile_validation_threshold = _as_dict(scorecard.get("profile_validation_threshold"))
+    genius_candidate_target = _as_dict(scorecard.get("genius_candidate_promotion_target"))
     evidence_check_ids = {
         "training_evidence_present",
         "reviewed_transfer_or_assessment_present",
@@ -485,6 +495,16 @@ def validate_genius_derivation_profile(profile: dict[str, Any]) -> dict[str, Any
         "method_distillation_required": "method_distillation" in cycle,
         "varied_transfer_required": "varied_transfer" in cycle,
         "scorecard_complete": set(REQUIRED_SCORECARD_METRICS) <= metric_ids,
+        "profile_validation_threshold_explicit": (
+            profile_validation_threshold.get("minimum_training_evidence_units") == 1
+            and profile_validation_threshold.get("minimum_reviewed_transfer_evidence_count") == 1
+            and profile_validation_threshold.get("requires_growth_or_grade_learning_evidence") is True
+            and profile_validation_threshold.get("requires_domain_scope_or_curriculum_evidence") is True
+        ),
+        "genius_promotion_target_not_base_validation_gate": (
+            genius_candidate_target.get("purpose")
+            == "long-term promotion target after repeated reviewed trials; not the base profile validation gate"
+        ),
         "asymmetry_explicit": unevenness.get("specialization_is_allowed_to_create_asymmetry") is True,
         "weakness_guardrails_present": bool(_as_list(unevenness.get("weakness_guardrails"))),
         "no_network_call": public_safe.get("network_call_performed") is False,

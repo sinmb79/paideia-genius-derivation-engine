@@ -8,20 +8,45 @@ from typing import Any, Sequence
 from .genius_derivation import build_genius_derivation_profile
 
 
-def _read_json(path: str | None) -> dict[str, Any] | None:
+class CliInputError(ValueError):
+    def __init__(self, failed_check: str, message: str) -> None:
+        super().__init__(message)
+        self.failed_check = failed_check
+
+
+def _read_json(path: str | None, *, label: str) -> Any:
     if not path:
         return None
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise CliInputError("input_file_not_found", f"{label} file not found: {path}") from exc
+    except OSError as exc:
+        raise CliInputError("input_file_unreadable", f"{label} file cannot be read: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise CliInputError("invalid_json_input", f"{label} is not valid JSON: {path}") from exc
 
 
 def _read_reasoning_kibo_jsonl(path: str | None) -> dict[str, Any] | None:
     if not path:
         return None
     entries: list[dict[str, Any]] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError as exc:
+        raise CliInputError("input_file_not_found", f"reasoning kibo file not found: {path}") from exc
+    except OSError as exc:
+        raise CliInputError("input_file_unreadable", f"reasoning kibo file cannot be read: {path}") from exc
+    for line_number, line in enumerate(lines, start=1):
         stripped = line.strip()
         if stripped:
-            item = json.loads(stripped)
+            try:
+                item = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise CliInputError(
+                    "invalid_jsonl_input",
+                    f"reasoning kibo line {line_number} is not valid JSON: {path}",
+                ) from exc
             if isinstance(item, dict):
                 entries.append(item)
     return {"entries": entries}
@@ -53,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _write_failure_profile(output_path: Path, error: str) -> None:
+def _write_failure_profile(output_path: Path, error: str, failed_check: str) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(
@@ -64,7 +89,7 @@ def _write_failure_profile(output_path: Path, error: str) -> None:
                     "schema": "paideia-genius-derivation-profile-validation/v1",
                     "status": "failed",
                     "passed": False,
-                    "failed_checks": ["unsupported_training_blueprint_schema"],
+                    "failed_checks": [failed_check],
                 },
                 "error": error,
             },
@@ -82,20 +107,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "build-profile":
         output_path = Path(args.output)
         try:
-            blueprint = _read_json(args.blueprint)
-            if blueprint is None:
-                raise ValueError("Missing training blueprint")
+            blueprint = _read_json(args.blueprint, label="blueprint")
+            if not isinstance(blueprint, dict):
+                raise CliInputError("invalid_input_shape", "blueprint must be a JSON object")
             profile = build_genius_derivation_profile(
                 blueprint,
-                curriculum_manifest=_read_json(args.curriculum),
-                assessment_transcript=_read_json(args.assessment_transcript),
-                growth_profile=_read_json(args.growth_profile),
-                grade_learning_records=_read_json(args.grade_learning_records),
+                curriculum_manifest=_read_json(args.curriculum, label="curriculum"),
+                assessment_transcript=_read_json(args.assessment_transcript, label="assessment transcript"),
+                growth_profile=_read_json(args.growth_profile, label="growth profile"),
+                grade_learning_records=_read_json(args.grade_learning_records, label="grade learning records"),
                 reasoning_kibo=_read_reasoning_kibo_jsonl(args.reasoning_kibo),
                 output_path=output_path,
             )
+        except CliInputError as exc:
+            _write_failure_profile(output_path, str(exc), exc.failed_check)
+            print(str(output_path))
+            return 2
         except ValueError as exc:
-            _write_failure_profile(output_path, str(exc))
+            failed_check = (
+                "unsupported_training_blueprint_schema"
+                if "Unsupported training blueprint schema" in str(exc)
+                else "invalid_input_value"
+            )
+            _write_failure_profile(output_path, str(exc), failed_check)
             print(str(output_path))
             return 2
 

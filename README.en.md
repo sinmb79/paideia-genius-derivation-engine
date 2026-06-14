@@ -67,6 +67,8 @@ paideia-genius-profile build-profile `
 
 Without `--allow-draft`, insufficient evidence produces an artifact but returns exit code `2`.
 
+`validation.passed` means the training contract has enough minimum evidence to be valid; it does not prove genius. Longer-term criteria such as eight reviewed trials and an average score of 90 are recorded separately as `genius_candidate_promotion_target`.
+
 ## Python
 
 ```python
