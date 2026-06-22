@@ -14,8 +14,14 @@ This release connects Paideia's genius derivation engine to the new Kibo Pattern
 
 ## Validation
 
-- `paideia-genius-derivation-engine`: 22 tests passed.
-- Kibo/pattern affinity targeted tests: 6 tests passed.
+- `paideia-genius-derivation-engine`: 25 tests passed.
+- Kibo/pattern affinity targeted tests: 9 tests passed.
+
+## Post-Review Hardening
+
+- Pattern affinity now serializes as `paideia-pattern-affinity/v1`.
+- High-risk pattern affinity requires critic pass evidence.
+- Explicitly failed genius profile validation blocks affinity approval.
 
 <details>
 <summary>한국어 설명 보기</summary>
@@ -36,7 +42,13 @@ This release connects Paideia's genius derivation engine to the new Kibo Pattern
 
 ## 검증
 
-- `paideia-genius-derivation-engine`: 전체 22개 테스트 통과
-- Kibo/pattern affinity targeted test: 6개 통과
+- `paideia-genius-derivation-engine`: 전체 25개 테스트 통과
+- Kibo/pattern affinity targeted test: 9개 통과
+
+## 리뷰 후 보강
+
+- Pattern affinity 직렬화 schema가 `paideia-pattern-affinity/v1`로 나가도록 보강했습니다.
+- high-risk pattern affinity에는 critic pass evidence가 필요합니다.
+- genius profile validation이 명시적으로 실패한 경우 affinity approval을 차단합니다.
 
 </details>

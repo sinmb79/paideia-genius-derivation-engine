@@ -34,10 +34,10 @@ class KiboAffinity:
     affinity_score: float
     blocked_reasons: tuple[str, ...]
     required_additional_evidence: tuple[str, ...]
+    schema: str = KIBO_AFFINITY_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["schema"] = KIBO_AFFINITY_SCHEMA
         data["blocked_reasons"] = list(self.blocked_reasons)
         data["required_additional_evidence"] = list(self.required_additional_evidence)
         data["affinity_score"] = round(self.affinity_score, 4)
@@ -89,6 +89,14 @@ def evaluate_kibo_affinity(
 
     blocked: list[str] = []
     required: list[str] = []
+    profile_status = str(genius_profile.get("status") or "").casefold()
+    validation = _as_dict(genius_profile.get("validation"))
+    if profile_status and profile_status not in {"training_contract_valid", "genius_candidate_promoted"}:
+        blocked.append("genius_profile_not_validated")
+        required.append("validated_genius_profile")
+    if validation and validation.get("passed") is False:
+        blocked.append("genius_profile_validation_failed")
+        required.append("passed_genius_profile_validation")
     if not _domain_match(genius_profile, kibo_record):
         blocked.append("domain_mismatch")
         required.append("domain_matched_training_evidence")
@@ -125,6 +133,7 @@ def evaluate_pattern_affinity(
     minimum_training_evidence: int = 1,
     minimum_reviewed_transfer: int = 1,
     high_risk_task: bool = False,
+    critic_passed: bool = False,
 ) -> KiboAffinity:
     affinity = evaluate_kibo_affinity(
         genius_profile,
@@ -150,6 +159,9 @@ def evaluate_pattern_affinity(
     if high_risk_task and status not in {"field_validated", "reinforced"}:
         blocked.append("high_risk_requires_field_validated_pattern")
         required.append("real_world_outcome_evidence")
+    if high_risk_task and not critic_passed:
+        blocked.append("high_risk_requires_critic_passed_pattern")
+        required.append("critic_report_pass_gate")
     score = affinity.affinity_score
     if blocked:
         score = min(score, 0.49)
@@ -158,4 +170,5 @@ def evaluate_pattern_affinity(
         affinity_score=max(0.0, min(1.0, score)),
         blocked_reasons=tuple(dict.fromkeys(blocked)),
         required_additional_evidence=tuple(dict.fromkeys(required)),
+        schema=PATTERN_AFFINITY_SCHEMA,
     )

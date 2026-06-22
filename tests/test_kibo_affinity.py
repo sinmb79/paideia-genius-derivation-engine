@@ -88,7 +88,36 @@ def test_pattern_affinity_requires_field_validation_for_high_risk():
     assert "high_risk_requires_field_validated_pattern" in result.blocked_reasons
 
 
-def test_pattern_affinity_allows_field_validated_pattern():
+def test_pattern_affinity_requires_critic_for_high_risk():
     result = evaluate_pattern_affinity(_profile(), _pattern(status="field_validated"), high_risk_task=True)
 
+    assert result.allowed is False
+    assert "high_risk_requires_critic_passed_pattern" in result.blocked_reasons
+
+
+def test_pattern_affinity_allows_field_validated_pattern():
+    result = evaluate_pattern_affinity(
+        _profile(),
+        _pattern(status="field_validated"),
+        high_risk_task=True,
+        critic_passed=True,
+    )
+
     assert result.allowed is True
+
+
+def test_pattern_affinity_serializes_pattern_schema():
+    result = evaluate_pattern_affinity(_profile(), _pattern(status="field_validated"))
+
+    assert result.to_dict()["schema"] == "paideia-pattern-affinity/v1"
+
+
+def test_affinity_blocks_explicitly_failed_profile_validation():
+    profile = _profile()
+    profile["status"] = "training_contract_valid"
+    profile["validation"] = {"passed": False}
+
+    result = evaluate_kibo_affinity(profile, _kibo())
+
+    assert result.allowed is False
+    assert "genius_profile_validation_failed" in result.blocked_reasons
