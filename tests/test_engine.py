@@ -133,6 +133,31 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertFalse(profile["public_safe"]["network_call_performed"])
         self.assertEqual(profile["public_safe"]["private_reasoning_trace"], "not_stored")
 
+    def test_profile_builder_accepts_curriculum_backlog_and_weakness_records(self) -> None:
+        weakness = {
+            "schema": "paideia-weakness-record/v1",
+            "weakness_id": "weakness-risk",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "risk_analysis",
+            "weakness_type": "risk_gap",
+            "evidence_refs": ["failure-1"],
+            "severity": 0.75,
+            "recurrence_count": 1,
+        }
+        profile = build_genius_derivation_profile(
+            BLUEPRINT,
+            curriculum_manifest=CURRICULUM,
+            assessment_transcript=ASSESSMENT,
+            growth_profile=GROWTH,
+            grade_learning_records=GRADE_RECORDS,
+            curriculum_backlog=[{"curriculum_id": "curriculum-risk", "skill_id": "risk_analysis"}],
+            weakness_records=[weakness],
+        )
+
+        self.assertEqual(profile["curriculum_backlog"][0]["curriculum_id"], "curriculum-risk")
+        self.assertEqual(profile["weakness_records"][0]["weakness_id"], "weakness-risk")
+
     def test_write_and_read_roundtrip(self) -> None:
         profile = build_genius_derivation_profile(
             BLUEPRINT,
@@ -432,6 +457,71 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertEqual(draft_code, 0)
         self.assertEqual(profile["validation"]["status"], "needs_training_evidence")
         self.assertEqual(draft["validation"]["status"], "needs_training_evidence")
+
+    def test_cli_accepts_curriculum_backlog_and_weakness_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            blueprint_path = tmp_path / "blueprint.json"
+            curriculum_path = tmp_path / "curriculum.json"
+            assessment_path = tmp_path / "assessment.json"
+            growth_path = tmp_path / "growth.json"
+            records_path = tmp_path / "records.json"
+            backlog_path = tmp_path / "backlog.json"
+            weakness_path = tmp_path / "weakness.jsonl"
+            output_path = tmp_path / "profile.json"
+            blueprint_path.write_text(json.dumps(BLUEPRINT), encoding="utf-8")
+            curriculum_path.write_text(json.dumps(CURRICULUM), encoding="utf-8")
+            assessment_path.write_text(json.dumps(ASSESSMENT), encoding="utf-8")
+            growth_path.write_text(json.dumps(GROWTH), encoding="utf-8")
+            records_path.write_text(json.dumps(GRADE_RECORDS), encoding="utf-8")
+            backlog_path.write_text(
+                json.dumps([{"curriculum_id": "curriculum-risk", "skill_id": "risk_analysis"}]),
+                encoding="utf-8",
+            )
+            weakness_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "paideia-weakness-record/v1",
+                        "weakness_id": "weakness-risk",
+                        "owner": "Boss",
+                        "domain": "investment_research",
+                        "skill_id": "risk_analysis",
+                        "weakness_type": "risk_gap",
+                        "evidence_refs": ["failure-1"],
+                        "severity": 0.75,
+                        "recurrence_count": 1,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            code = cli_main(
+                [
+                    "build-profile",
+                    "--blueprint",
+                    str(blueprint_path),
+                    "--curriculum",
+                    str(curriculum_path),
+                    "--assessment-transcript",
+                    str(assessment_path),
+                    "--growth-profile",
+                    str(growth_path),
+                    "--grade-learning-records",
+                    str(records_path),
+                    "--curriculum-backlog",
+                    str(backlog_path),
+                    "--weakness-records",
+                    str(weakness_path),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+            profile = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(profile["curriculum_backlog"][0]["curriculum_id"], "curriculum-risk")
+        self.assertEqual(profile["weakness_records"][0]["weakness_id"], "weakness-risk")
 
     def test_module_cli_smoke_with_sample_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

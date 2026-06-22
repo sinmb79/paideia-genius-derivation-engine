@@ -8,6 +8,7 @@ from typing import Any
 
 KIBO_AFFINITY_SCHEMA = "paideia-kibo-affinity/v1"
 PATTERN_AFFINITY_SCHEMA = "paideia-pattern-affinity/v1"
+HIGH_WEAKNESS_THRESHOLD = 0.75
 
 
 def _tokens(value: Any) -> set[str]:
@@ -87,22 +88,75 @@ def _active_curriculum_weaknesses(profile: dict[str, Any], pattern_candidate: di
     for weakness in _as_list(profile.get("weakness_records")):
         if not isinstance(weakness, dict):
             continue
+        if _weakness_resolved(weakness):
+            continue
         severity = _score(weakness.get("severity"))
         recurrence = int(weakness.get("recurrence_count") or 0)
-        weakness_tokens = _tokens(
-            [
-                weakness.get("domain"),
-                weakness.get("skill_id"),
-                weakness.get("weakness_type"),
-            ]
-        )
         domain = str(weakness.get("domain") or "").casefold()
         pattern_domain = str(pattern_candidate.get("domain") or "").casefold()
         if domain not in {"", "general", pattern_domain}:
             continue
-        if weakness_tokens & pattern_tokens or domain == pattern_domain:
-            if severity >= 0.8 or recurrence >= 3:
+        if _weakness_matches_pattern(weakness, pattern_tokens, pattern_domain):
+            if severity >= HIGH_WEAKNESS_THRESHOLD or recurrence >= 3:
                 active.append(weakness)
+    return active
+
+
+def _weakness_matches_pattern(
+    weakness: dict[str, Any],
+    pattern_tokens: set[str],
+    pattern_domain: str,
+) -> bool:
+    skill_id = str(weakness.get("skill_id") or "").casefold()
+    skill_tokens = _tokens(skill_id)
+    if skill_id:
+        return bool(skill_tokens & pattern_tokens)
+    scope = str(weakness.get("scope") or "").casefold()
+    domain = str(weakness.get("domain") or "").casefold()
+    return scope == "domain" and domain == pattern_domain
+
+
+def _weakness_resolved(weakness: dict[str, Any]) -> bool:
+    status = str(weakness.get("status") or "").casefold()
+    if status in {"resolved", "cleared"}:
+        return True
+    remediation = _as_dict(weakness.get("remediation"))
+    remediation_status = str(remediation.get("status") or "").casefold()
+    remediation_done = remediation_status in {"completed", "passed", "remediated"} or remediation.get("completed") is True
+    reexam = _as_dict(weakness.get("adaptive_reexam") or weakness.get("reexam"))
+    if not reexam:
+        return False
+    target = _score(reexam.get("target_score") if reexam.get("target_score") is not None else 0.75)
+    score = _score(reexam.get("score"))
+    reexam_passed = reexam.get("passed") is True and score >= target
+    return remediation_done and reexam_passed
+
+
+def _active_curriculum_backlog(profile: dict[str, Any], pattern_candidate: dict[str, Any]) -> list[Any]:
+    pattern_tokens = _tokens(
+        [
+            pattern_candidate.get("domain"),
+            pattern_candidate.get("task_family"),
+            pattern_candidate.get("required_conditions"),
+            pattern_candidate.get("abstract_strategy"),
+        ]
+    )
+    pattern_domain = str(pattern_candidate.get("domain") or "").casefold()
+    active: list[Any] = []
+    for item in _as_list(profile.get("curriculum_backlog")):
+        if isinstance(item, dict):
+            status = str(item.get("status") or "open").casefold()
+            if status in {"completed", "resolved", "cleared"}:
+                continue
+            domain = str(item.get("domain") or "").casefold()
+            skill_tokens = _tokens([item.get("skill_id"), item.get("skills"), item.get("learning_goals")])
+            if domain and domain not in {"general", pattern_domain}:
+                continue
+            if not skill_tokens or skill_tokens & pattern_tokens:
+                active.append(item)
+            continue
+        if str(item or "").strip():
+            active.append(item)
     return active
 
 
@@ -204,11 +258,12 @@ def evaluate_pattern_affinity(
         blocked.append("high_risk_requires_critic_passed_pattern")
         required.append("critic_report_pass_gate")
     active_weaknesses = _active_curriculum_weaknesses(genius_profile, pattern_candidate)
+    active_backlog = _active_curriculum_backlog(genius_profile, pattern_candidate)
     if active_weaknesses:
         blocked.append("active_curriculum_weakness")
         required.append("completed_curriculum_remediation")
         required.append("passed_adaptive_reexam")
-    if _as_list(genius_profile.get("curriculum_backlog")) and active_weaknesses:
+    if active_backlog:
         blocked.append("curriculum_backlog_not_cleared")
         required.append("clear_curriculum_backlog")
     score = affinity.affinity_score

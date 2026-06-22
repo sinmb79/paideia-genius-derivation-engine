@@ -169,3 +169,78 @@ def test_pattern_affinity_blocks_repeated_weakness_with_backlog():
 
     assert result.allowed is False
     assert "curriculum_backlog_not_cleared" in result.blocked_reasons
+
+
+def test_pattern_affinity_blocks_open_backlog_without_weakness_records():
+    profile = _profile()
+    profile["curriculum_backlog"] = [{"curriculum_id": "curriculum-risk-1", "skill_id": "risk_analysis"}]
+
+    result = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert result.allowed is False
+    assert "curriculum_backlog_not_cleared" in result.blocked_reasons
+
+
+def test_pattern_affinity_requires_reexam_after_remediation():
+    profile = _profile()
+    profile["weakness_records"] = [
+        {
+            "weakness_id": "weakness-1",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "risk_analysis",
+            "weakness_type": "risk_gap",
+            "evidence_refs": ["failure-1"],
+            "severity": 0.75,
+            "recurrence_count": 1,
+            "remediation": {"status": "completed"},
+        }
+    ]
+
+    result = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert result.allowed is False
+    assert "active_curriculum_weakness" in result.blocked_reasons
+
+
+def test_pattern_affinity_recovers_after_remediation_and_reexam_pass():
+    profile = _profile()
+    profile["weakness_records"] = [
+        {
+            "weakness_id": "weakness-1",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "risk_analysis",
+            "weakness_type": "risk_gap",
+            "evidence_refs": ["failure-1"],
+            "severity": 0.75,
+            "recurrence_count": 1,
+            "remediation": {"status": "completed"},
+            "adaptive_reexam": {"passed": True, "score": 0.91, "target_score": 0.85},
+        }
+    ]
+
+    result = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert result.allowed is True
+    assert "active_curriculum_weakness" not in result.blocked_reasons
+
+
+def test_pattern_affinity_does_not_overblock_unrelated_same_domain_weakness():
+    profile = _profile()
+    profile["weakness_records"] = [
+        {
+            "weakness_id": "weakness-1",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "macro_regime_analysis",
+            "weakness_type": "knowledge_gap",
+            "evidence_refs": ["failure-1"],
+            "severity": 0.95,
+            "recurrence_count": 4,
+        }
+    ]
+
+    result = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert result.allowed is True

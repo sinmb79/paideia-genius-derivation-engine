@@ -58,6 +58,46 @@ def _read_reasoning_kibo_jsonl(path: str | None) -> dict[str, Any] | None:
     return {"entry_count": entry_count}
 
 
+def _read_json_or_jsonl_rows(path: str | None, *, label: str, collection_key: str | None = None) -> list[Any] | None:
+    if not path:
+        return None
+    source = Path(path)
+    try:
+        text = source.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise CliInputError("input_file_not_found", f"{label} file not found: {path}") from exc
+    except OSError as exc:
+        raise CliInputError("input_file_unreadable", f"{label} file cannot be read: {path}") from exc
+    if source.suffix.lower() == ".jsonl":
+        rows: list[Any] = []
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                row = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise CliInputError(
+                    "invalid_jsonl_input",
+                    f"{label} line {line_number} is not valid JSON: {path}",
+                ) from exc
+            rows.append(row)
+        return rows
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CliInputError("invalid_json_input", f"{label} is not valid JSON: {path}") from exc
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict) and collection_key and isinstance(payload.get(collection_key), list):
+        return payload[collection_key]
+    if isinstance(payload, dict) and isinstance(payload.get("updated_weakness"), dict):
+        return [payload["updated_weakness"]]
+    if isinstance(payload, dict):
+        return [payload]
+    raise CliInputError("invalid_input_shape", f"{label} must be a JSON object, array, or JSONL file: {path}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="paideia-genius-profile",
@@ -75,6 +115,8 @@ def build_parser() -> argparse.ArgumentParser:
     build_profile.add_argument("--growth-profile", help="Growth profile JSON path.")
     build_profile.add_argument("--grade-learning-records", help="Grade learning records JSON path.")
     build_profile.add_argument("--reasoning-kibo", help="Reasoning kibo JSONL path.")
+    build_profile.add_argument("--curriculum-backlog", help="Curriculum backlog JSON/JSONL path.")
+    build_profile.add_argument("--weakness-records", help="WeaknessRecord JSON/JSONL path.")
     build_profile.add_argument(
         "--allow-draft",
         action="store_true",
@@ -123,6 +165,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 growth_profile=_read_json(args.growth_profile, label="growth profile"),
                 grade_learning_records=_read_json(args.grade_learning_records, label="grade learning records"),
                 reasoning_kibo=_read_reasoning_kibo_jsonl(args.reasoning_kibo),
+                curriculum_backlog=_read_json_or_jsonl_rows(
+                    args.curriculum_backlog,
+                    label="curriculum backlog",
+                    collection_key="curriculum_backlog",
+                ),
+                weakness_records=_read_json_or_jsonl_rows(
+                    args.weakness_records,
+                    label="weakness records",
+                    collection_key="weaknesses",
+                ),
                 output_path=output_path,
             )
         except CliInputError as exc:
