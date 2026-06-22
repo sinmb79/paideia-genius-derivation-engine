@@ -116,6 +116,8 @@ class GeniusDerivationEngineTests(unittest.TestCase):
         self.assertTrue(profile["design_claim"]["not_general_superintelligence"])
         self.assertTrue(profile["design_claim"]["not_model_size_claim"])
         self.assertIn("counterexample_depth", profile["unevenness_profile"]["weakness_guardrails"])
+        self.assertEqual(profile["curriculum_backlog"], [])
+        self.assertEqual(profile["weakness_records"], [])
         self.assertEqual(profile["evidence_summary"]["qualified_passed_assessment_count"], 0)
         self.assertEqual(profile["evidence_summary"]["disqualified_passed_assessment_count"], 1)
         self.assertEqual(profile["evidence_summary"]["reviewed_assignment_count"], 1)

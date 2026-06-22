@@ -74,6 +74,47 @@ def _weakness_conflict(profile: dict[str, Any], kibo: dict[str, Any]) -> bool:
     return bool(meaningful & kibo_tokens)
 
 
+def _active_curriculum_weaknesses(profile: dict[str, Any], pattern_candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    pattern_tokens = _tokens(
+        [
+            pattern_candidate.get("domain"),
+            pattern_candidate.get("task_family"),
+            pattern_candidate.get("required_conditions"),
+            pattern_candidate.get("abstract_strategy"),
+        ]
+    )
+    active: list[dict[str, Any]] = []
+    for weakness in _as_list(profile.get("weakness_records")):
+        if not isinstance(weakness, dict):
+            continue
+        severity = _score(weakness.get("severity"))
+        recurrence = int(weakness.get("recurrence_count") or 0)
+        weakness_tokens = _tokens(
+            [
+                weakness.get("domain"),
+                weakness.get("skill_id"),
+                weakness.get("weakness_type"),
+            ]
+        )
+        domain = str(weakness.get("domain") or "").casefold()
+        pattern_domain = str(pattern_candidate.get("domain") or "").casefold()
+        if domain not in {"", "general", pattern_domain}:
+            continue
+        if weakness_tokens & pattern_tokens or domain == pattern_domain:
+            if severity >= 0.8 or recurrence >= 3:
+                active.append(weakness)
+    return active
+
+
+def _score(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def evaluate_kibo_affinity(
     genius_profile: dict[str, Any],
     kibo_record: dict[str, Any],
@@ -162,6 +203,14 @@ def evaluate_pattern_affinity(
     if high_risk_task and not critic_passed:
         blocked.append("high_risk_requires_critic_passed_pattern")
         required.append("critic_report_pass_gate")
+    active_weaknesses = _active_curriculum_weaknesses(genius_profile, pattern_candidate)
+    if active_weaknesses:
+        blocked.append("active_curriculum_weakness")
+        required.append("completed_curriculum_remediation")
+        required.append("passed_adaptive_reexam")
+    if _as_list(genius_profile.get("curriculum_backlog")) and active_weaknesses:
+        blocked.append("curriculum_backlog_not_cleared")
+        required.append("clear_curriculum_backlog")
     score = affinity.affinity_score
     if blocked:
         score = min(score, 0.49)

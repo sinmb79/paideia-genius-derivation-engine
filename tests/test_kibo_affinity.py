@@ -121,3 +121,51 @@ def test_affinity_blocks_explicitly_failed_profile_validation():
 
     assert result.allowed is False
     assert "genius_profile_validation_failed" in result.blocked_reasons
+
+
+def test_pattern_affinity_blocks_active_curriculum_weakness():
+    profile = _profile()
+    profile["weakness_records"] = [
+        {
+            "schema": "paideia-weakness-record/v1",
+            "weakness_id": "weakness-1",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "risk_analysis",
+            "weakness_type": "risk_gap",
+            "evidence_refs": ["failure-1"],
+            "severity": 0.86,
+            "recurrence_count": 2,
+        }
+    ]
+
+    result = evaluate_pattern_affinity(_profile(**{}), _pattern(status="field_validated"))
+    assert result.allowed is True
+
+    blocked = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert blocked.allowed is False
+    assert "active_curriculum_weakness" in blocked.blocked_reasons
+    assert "passed_adaptive_reexam" in blocked.required_additional_evidence
+
+
+def test_pattern_affinity_blocks_repeated_weakness_with_backlog():
+    profile = _profile()
+    profile["curriculum_backlog"] = ["curriculum-risk-1"]
+    profile["weakness_records"] = [
+        {
+            "weakness_id": "weakness-1",
+            "owner": "Boss",
+            "domain": "investment_research",
+            "skill_id": "risk_analysis",
+            "weakness_type": "risk_gap",
+            "evidence_refs": ["failure-1", "failure-2", "failure-3"],
+            "severity": 0.62,
+            "recurrence_count": 3,
+        }
+    ]
+
+    result = evaluate_pattern_affinity(profile, _pattern(status="field_validated"))
+
+    assert result.allowed is False
+    assert "curriculum_backlog_not_cleared" in result.blocked_reasons
