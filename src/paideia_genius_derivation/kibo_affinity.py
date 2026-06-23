@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -164,9 +165,12 @@ def _score(value: Any) -> float:
     if isinstance(value, bool):
         return 0.0
     try:
-        return max(0.0, min(1.0, float(value)))
+        numeric = float(value)
     except (TypeError, ValueError):
         return 0.0
+    if not math.isfinite(numeric):
+        return 0.0
+    return max(0.0, min(1.0, numeric))
 
 
 def evaluate_kibo_affinity(

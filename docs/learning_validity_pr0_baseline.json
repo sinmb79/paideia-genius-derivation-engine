@@ -1,0 +1,23 @@
+{
+  "schema": "paideia-learning-validity-pr0-baseline/v1",
+  "captured_at": "2026-06-23T10:40:00+09:00",
+  "repository": "sinmb79/paideia-genius-derivation-engine",
+  "branch": "feature/independent-edge-brain-foundation",
+  "scope": "PR-0 Baseline Freeze and Gap Reproduction",
+  "production_behavior_changed": false,
+  "cli_baseline": {
+    "command": "$env:PYTHONPATH='src'; python -m paideia_genius_derivation --help",
+    "exit_code": 0,
+    "commands": ["build-profile"]
+  },
+  "test_baseline": {
+    "command": "$env:PYTHONPATH='src'; $env:PYTHONDONTWRITEBYTECODE='1'; python -m pytest -q -p no:cacheprovider",
+    "result": "37 passed, 1 xfailed in 1.07s"
+  },
+  "known_gap_xfail_tests": [
+    {
+      "test": "tests/test_learning_validity_known_gaps.py::test_known_gap_pattern_affinity_v2_requires_behavioral_validation_evidence",
+      "reason": "Pattern affinity v2 is not implemented yet, so canonical validation/evidence profiles are not consumed."
+    }
+  ]
+}
